@@ -144,10 +144,7 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 
 	D3D11_CREATE_DEVICE_FLAG deviceFlag;
 
-	if (_DEBUG)
-		deviceFlag = D3D11_CREATE_DEVICE_DEBUG;
-	else
-		deviceFlag = D3D11_CREATE_DEVICE_SINGLETHREADED;
+	deviceFlag = D3D11_CREATE_DEVICE_DEBUG;
 
 	HRESULT result = D3D11CreateDeviceAndSwapChain(
 		NULL,
@@ -339,6 +336,23 @@ bool DEMO_APP::Run()
 		tMatrix.r[3].m128_f32[1] = 5.0f * timer.Delta();
 	if (GetAsyncKeyState('E') & 0x8000)
 		tMatrix.r[3].m128_f32[1] = -5.0f * timer.Delta();
+
+	if (GetAsyncKeyState('4') & 0x8000)
+	{
+		tMatrix = XMMatrixRotationAxis(tMatrix.r[1], 0.005);
+	}
+	if (GetAsyncKeyState('6') & 0x8000)
+	{
+
+	}
+	if (GetAsyncKeyState('8') & 0x8000)
+	{
+
+	}
+	if (GetAsyncKeyState('2') & 0x8000)
+	{
+
+	}
 
 	viewFrustum.viewMatrix = XMMatrixMultiply(tMatrix, viewFrustum.viewMatrix);
 
