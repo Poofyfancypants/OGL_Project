@@ -281,7 +281,7 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	HRESULT IDL = device->CreateInputLayout(depthLayout, 2, Depth_VS, sizeof(Depth_VS), &depthlayout);
 
 	viewFrustum.worldMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-	viewFrustum.viewMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, -20, 1 };
+	viewFrustum.viewMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 10, -20, 1 };
 
 	float yScale = (1 / (tan(0.5f*1.57f)));
 	float xScale = (yScale * (BACKBUFFER_WIDTH / BACKBUFFER_HEIGHT));
@@ -343,15 +343,15 @@ bool DEMO_APP::Run()
 	}
 	if (GetAsyncKeyState('6') & 0x8000)
 	{
-
+		tMatrix = XMMatrixRotationAxis(tMatrix.r[1], -0.005);
 	}
 	if (GetAsyncKeyState('8') & 0x8000)
 	{
-
+		tMatrix = XMMatrixRotationAxis(tMatrix.r[2], 0.005);
 	}
 	if (GetAsyncKeyState('2') & 0x8000)
 	{
-
+		tMatrix = XMMatrixRotationAxis(tMatrix.r[2], -0.005);
 	}
 
 	viewFrustum.viewMatrix = XMMatrixMultiply(tMatrix, viewFrustum.viewMatrix);
@@ -361,7 +361,7 @@ bool DEMO_APP::Run()
 	((Camera*)mapped.pData)->worldMatrix = viewFrustum.worldMatrix;
 	((Camera*)mapped.pData)->viewMatrix = viewFrustum.viewMatrix;
 	((Camera*)mapped.pData)->projMatrix = viewFrustum.projMatrix;
-
+	
 	context->Unmap(constantBuffer, 0);
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
 
@@ -373,7 +373,7 @@ bool DEMO_APP::Run()
 	context->VSSetShader(depthShader, 0, 0);
 	context->PSSetShader(pixelShader, 0, 0);
 	context->IASetInputLayout(depthlayout);
-	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP);
+	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	context->DrawIndexed(84, 0, 0);
 
 
