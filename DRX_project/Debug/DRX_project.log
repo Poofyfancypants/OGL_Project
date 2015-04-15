@@ -1,0 +1,48 @@
+﻿Build started 3/31/2015 9:36:57 PM.
+     1>Project "C:\Users\Evan Doyle\Desktop\April DRX2\DRX_project\DRX_project\DRX_project.vcxproj" on node 2 (Build target(s)).
+     1>ClCompile:
+         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\CL.exe /c /ZI /nologo /W3 /WX- /sdl /Od /Oy- /D WIN32 /D _DEBUG /D _WINDOWS /D _UNICODE /D UNICODE /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Fo"Debug\\" /Fd"Debug\vc120.pdb" /Gd /TP /analyze- /errorReport:prompt main.cpp
+         main.cpp
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(21): error C2146: syntax error : missing ';' before identifier 'worldMatrix'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(21): error C4430: missing type specifier - int assumed. Note: C++ does not support default-int
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(22): error C2146: syntax error : missing ';' before identifier 'viewMatrix'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(22): error C4430: missing type specifier - int assumed. Note: C++ does not support default-int
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(23): error C2146: syntax error : missing ';' before identifier 'projMatrix'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(23): error C4430: missing type specifier - int assumed. Note: C++ does not support default-int
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(66): error C2146: syntax error : missing ';' before identifier 'Geom'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(66): error C4430: missing type specifier - int assumed. Note: C++ does not support default-int
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(67): error C2146: syntax error : missing ';' before identifier 'tMatrix'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(67): error C4430: missing type specifier - int assumed. Note: C++ does not support default-int
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(185): error C2065: 'tMatrix' : undeclared identifier
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(191): error C2065: 'tMatrix' : undeclared identifier
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(191): error C2228: left of '.matrix' must have class/struct/union
+                 type is 'unknown-type'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(193): error C2065: 'tMatrix' : undeclared identifier
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(193): error C2228: left of '.matrix' must have class/struct/union
+                 type is 'unknown-type'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(195): error C2065: 'tMatrix' : undeclared identifier
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(195): error C2228: left of '.matrix' must have class/struct/union
+                 type is 'unknown-type'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(197): error C2065: 'tMatrix' : undeclared identifier
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(197): error C2228: left of '.matrix' must have class/struct/union
+                 type is 'unknown-type'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(199): error C2065: 'tMatrix' : undeclared identifier
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(199): error C2228: left of '.matrix' must have class/struct/union
+                 type is 'unknown-type'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(201): error C2065: 'tMatrix' : undeclared identifier
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(201): error C2228: left of '.matrix' must have class/struct/union
+                 type is 'unknown-type'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(207): error C2039: 'worldMatrix' : is not a member of 'Camera'
+                 c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(20) : see declaration of 'Camera'
+                 c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(20) : see declaration of 'Camera'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(208): error C2039: 'viewMatrix' : is not a member of 'Camera'
+                 c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(20) : see declaration of 'Camera'
+                 c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(20) : see declaration of 'Camera'
+     1>c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(209): error C2039: 'projMatrix' : is not a member of 'Camera'
+                 c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(20) : see declaration of 'Camera'
+                 c:\users\evan doyle\desktop\april drx2\drx_project\drx_project\main.cpp(20) : see declaration of 'Camera'
+     1>Done Building Project "C:\Users\Evan Doyle\Desktop\April DRX2\DRX_project\DRX_project\DRX_project.vcxproj" (Build target(s)) -- FAILED.
+
+Build FAILED.
+
+Time Elapsed 00:00:01.30
