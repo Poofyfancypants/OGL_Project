@@ -1,21 +1,21 @@
-﻿Build started 4/12/2015 9:41:56 PM.
-     1>Project "C:\Users\Evan Doyle\Desktop\April DRX2\DRX_project\DRX_project\DRX_project.vcxproj" on node 2 (Build target(s)).
+﻿Build started 4/14/2015 9:47:05 PM.
+     1>Project "C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\DRX_project.vcxproj" on node 2 (Build target(s)).
      1>ClCompile:
          C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\x86_amd64\CL.exe /c /Zi /nologo /W3 /WX- /sdl /Od /D WIN32 /D _DEBUG /D _WINDOWS /D _UNICODE /D UNICODE /Gm /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Fo"x64\Debug\\" /Fd"x64\Debug\vc120.pdb" /Gd /TP /errorReport:prompt main.cpp
          main.cpp
-     1>main.cpp(276): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>main.cpp(278): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>main.cpp(280): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>main.cpp(282): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>main.cpp(284): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>main.cpp(286): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
+     1>main.cpp(331): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
+     1>main.cpp(333): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
+     1>main.cpp(335): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
+     1>main.cpp(337): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
+     1>main.cpp(339): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
+     1>main.cpp(341): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
        Link:
-         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\x86_amd64\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\Evan Doyle\Desktop\April DRX2\DRX_project\x64\Debug\DRX_project.exe" /INCREMENTAL /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\Users\Evan Doyle\Desktop\April DRX2\DRX_project\x64\Debug\DRX_project.pdb" /SUBSYSTEM:WINDOWS /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\Evan Doyle\Desktop\April DRX2\DRX_project\x64\Debug\DRX_project.lib" /MACHINE:X64 x64\Debug\DDSTextureLoader.obj
+         C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\x86_amd64\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Debug\DRX_project.exe" /INCREMENTAL /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Debug\DRX_project.pdb" /SUBSYSTEM:WINDOWS /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Debug\DRX_project.lib" /MACHINE:X64 x64\Debug\DDSTextureLoader.obj
          x64\Debug\main.obj
          x64\Debug\XTime.obj
-         DRX_project.vcxproj -> C:\Users\Evan Doyle\Desktop\April DRX2\DRX_project\x64\Debug\DRX_project.exe
-     1>Done Building Project "C:\Users\Evan Doyle\Desktop\April DRX2\DRX_project\DRX_project\DRX_project.vcxproj" (Build target(s)).
+         DRX_project.vcxproj -> C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Debug\DRX_project.exe
+     1>Done Building Project "C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\DRX_project.vcxproj" (Build target(s)).
 
 Build succeeded.
 
-Time Elapsed 00:00:01.64
+Time Elapsed 00:00:01.46

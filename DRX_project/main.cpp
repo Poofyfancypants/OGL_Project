@@ -70,7 +70,7 @@ class DEMO_APP
 
 public:
 
-
+	XMFLOAT4 Geom[84];
 
 	XMMATRIX tMatrix;
 
@@ -174,6 +174,62 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	viewport.Width = BACKBUFFER_WIDTH;
 	viewport.Height = BACKBUFFER_HEIGHT;
 
+	for (size_t i = 0; i < 21; i++)
+	{
+		Geom[i].x = 0.5f * i - 5;
+		Geom[i].y = 0.0f;
+		Geom[i].z = -5.0f;
+		Geom[i].w = 1.0f;
+	}
+	for (size_t i = 21; i < 42; i++)
+	{
+		Geom[i].x = 0.5f * (i - 21) - 5;
+		Geom[i].y = 0.0f;
+		Geom[i].z = 5.0f;
+		Geom[i].w = 1.0f;
+	}
+	for (size_t i = 42; i < 63; i++)
+	{
+		Geom[i].x = -5.0f;
+		Geom[i].y = 0.0f;
+		Geom[i].z = 0.5f * (i - 42) - 5;
+		Geom[i].w = 1.0f;
+	}
+	for (size_t i = 63; i < 84; i++)
+	{
+		Geom[i].x = 5.0f;
+		Geom[i].y = 0.0f;
+		Geom[i].z = 0.5f * (i - 63) - 5;
+		Geom[i].w = 1.0f;
+	}
+
+	D3D11_BUFFER_DESC geom_desc;
+	ZeroMemory(&geom_desc, sizeof(geom_desc));
+	geom_desc.Usage = D3D11_USAGE_IMMUTABLE;
+	geom_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	geom_desc.CPUAccessFlags = NULL;
+	geom_desc.ByteWidth = sizeof(XMFLOAT4) * 84;
+
+	D3D11_BUFFER_DESC index1_desc;
+	ZeroMemory(&index1_desc, sizeof(index1_desc));
+	index1_desc.Usage = D3D11_USAGE_IMMUTABLE;
+	index1_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	index1_desc.CPUAccessFlags = NULL;
+	index1_desc.ByteWidth = sizeof(unsigned int) * 84;
+
+	D3D11_SUBRESOURCE_DATA geomData;
+	ZeroMemory(&geomData, sizeof(geomData));
+	geomData.pSysMem = Geom;
+	HRESULT g = device->CreateBuffer(&geom_desc, &geomData, &vertBuffer1);
+
+	UINT32 index[] = { 0, 20, 41, 21, 0, 1, 22, 23, 2, 3, 24, 25, 4, 5, 26, 27, 6, 7, 28, 29, 8, 9, 30, 31, 10, 11, 32, 33, 12, 13, 34, 35, 14, 15, 36, 37, 16, 17, 38, 39, 18, 19, 40, 41,
+		83, 82, 61, 60, 81, 80, 59, 58, 79, 78, 57, 56, 77, 76, 55, 54, 75, 74, 53, 52, 73, 72, 51, 50, 71, 70, 49, 48, 69, 68, 47, 46, 67, 66, 45, 44, 65, 64, 43, 42, 63, 62, 41 };
+
+	D3D11_SUBRESOURCE_DATA indexData;
+	ZeroMemory(&indexData, sizeof(indexData));
+	indexData.pSysMem = index;
+	HRESULT i = device->CreateBuffer(&index1_desc, &indexData, &indexBuffer1);
+
 	D3D11_BUFFER_DESC constbuff_desc;
 	ZeroMemory(&constbuff_desc, sizeof(constbuff_desc));
 	constbuff_desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -274,15 +330,15 @@ bool DEMO_APP::Run()
 	if (GetAsyncKeyState('W') & 0x8000)
 		tMatrix.r[3].m128_f32[2] = -5.0f * timer.Delta();
 	if (GetAsyncKeyState('A') & 0x8000)
-		tMatrix.r[3].m128_f32[2] = 5.0f * timer.Delta();
+		tMatrix.r[3].m128_f32[0] = 5.0f * timer.Delta();
 	if (GetAsyncKeyState('S') & 0x8000)
 		tMatrix.r[3].m128_f32[2] = 5.0f * timer.Delta();
 	if (GetAsyncKeyState('D') & 0x8000)
-		tMatrix.r[3].m128_f32[2] = -5.0f * timer.Delta();
+		tMatrix.r[3].m128_f32[0] = -5.0f * timer.Delta();
 	if (GetAsyncKeyState('Q') & 0x8000)
-		tMatrix.r[3].m128_f32[2] = -5.0f * timer.Delta();
+		tMatrix.r[3].m128_f32[1] = 5.0f * timer.Delta();
 	if (GetAsyncKeyState('E') & 0x8000)
-		tMatrix.r[3].m128_f32[2] = 5.0f * timer.Delta();
+		tMatrix.r[3].m128_f32[1] = -5.0f * timer.Delta();
 
 	viewFrustum.viewMatrix = XMMatrixMultiply(tMatrix, viewFrustum.viewMatrix);
 
@@ -294,6 +350,18 @@ bool DEMO_APP::Run()
 
 	context->Unmap(constantBuffer, 0);
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
+
+	unsigned int aef = 0;
+	unsigned int adw = sizeof(XMFLOAT4);
+	context->RSSetState(rastState);
+	context->IASetVertexBuffers(0, 1, &vertBuffer1, &adw, &aef);
+	context->IASetIndexBuffer(indexBuffer1, DXGI_FORMAT_R32_UINT, 0);
+	context->VSSetShader(depthShader, 0, 0);
+	context->PSSetShader(pixelShader, 0, 0);
+	context->IASetInputLayout(depthlayout);
+	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_LINESTRIP);
+	context->DrawIndexed(84, 0, 0);
+
 
 	swapChain->Present(0, 0);
 
@@ -323,7 +391,6 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(depthShader);
 	SAFE_RELEASE(vertShader);
 	SAFE_RELEASE(pixelShader);
-
 
 	UnregisterClass(L"DirectXApplication", application);
 	return true;
