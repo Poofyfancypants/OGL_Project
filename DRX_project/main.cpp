@@ -32,6 +32,12 @@ struct Camera
 	XMMATRIX projMatrix;
 };
 
+struct CubeVert
+{
+	XMFLOAT4 position;
+	XMFLOAT4 color;
+};
+
 class DEMO_APP
 {
 	HINSTANCE						application;
@@ -60,6 +66,9 @@ class DEMO_APP
 
 	ID3D11Buffer *constantBuffer;
 
+	ID3D11Buffer *cubeBuffer;
+	ID3D11Buffer *cubeIndexBuffer;
+
 	ID3D11Buffer *indexBuffer1;
 	ID3D11Buffer *vertBuffer1;
 
@@ -71,6 +80,8 @@ class DEMO_APP
 public:
 
 	XMFLOAT4 Geom[84];
+
+	CubeVert cube[8];
 
 	XMMATRIX tMatrix;
 
@@ -277,6 +288,74 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
 	};
 
+	cube[0].position.x = -0.5;
+	cube[0].position.y = -0.5;
+	cube[0].position.z = -0.5;
+	cube[0].position.w = 1.0;
+	cube[1].position.x = 0.5;
+	cube[1].position.y = -0.5;
+	cube[1].position.z = -0.5;
+	cube[1].position.w = 1;
+	cube[2].position.x = -0.5;
+	cube[2].position.y = 0.5;
+	cube[2].position.z = -0.5;
+	cube[2].position.w = 1;
+	cube[3].position.x = 0.5;
+	cube[3].position.y = 0.5;
+	cube[3].position.z = -0.5;
+	cube[3].position.w = 1;
+	cube[4].position.x = -0.5;
+	cube[4].position.y = -0.5;
+	cube[4].position.z = 0.5;
+	cube[4].position.w = 1;
+	cube[5].position.x = 0.5;
+	cube[5].position.y = -0.5;
+	cube[5].position.z = 0.5;
+	cube[5].position.w = 1;
+	cube[6].position.x = -0.5;
+	cube[6].position.y = 0.5;
+	cube[6].position.z = 0.5;
+	cube[6].position.w = 1;
+	cube[7].position.x = 0.5;
+	cube[7].position.y = 0.5;
+	cube[7].position.z = 0.5;
+	cube[7].position.w = 1;
+
+	cube[0].color = { 0, 1, 0, 1 };
+	cube[1].color = { 1, 0, 0, 1 };
+	cube[2].color = { 0, 1, 1, 1 };
+	cube[3].color = { 1, 1, 0, 1 };
+	cube[4].color = { 0, 1, 0, 1 };
+	cube[5].color = { 1, 0, 0, 1 };
+	cube[6].color = { 0, 1, 1, 1 };
+	cube[7].color = { 1, 1, 0, 1 };
+
+	D3D11_BUFFER_DESC cube_desc;
+	ZeroMemory(&cube_desc, sizeof(cube_desc));
+	cube_desc.Usage = D3D11_USAGE_IMMUTABLE;
+	cube_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	cube_desc.ByteWidth = sizeof(CubeVert) * 8;
+	cube_desc.CPUAccessFlags = NULL;
+
+	D3D11_SUBRESOURCE_DATA cube_data;
+	ZeroMemory(&cube_data, sizeof(cube_data));
+	cube_data.pSysMem = cube;
+	HRESULT l = device->CreateBuffer(&cube_desc, &cube_data, &cubeBuffer);
+
+	UINT32 cubeIndices[] = {0,2,1,1,2,3, 1,3,7,7,5,1, 2,0,4,4,6,2, 4,5,6,5,7,6, 2,7,3,6,7,2, 0,1,5,5,4,0};
+
+	D3D11_BUFFER_DESC cube_index_desc;
+	ZeroMemory(&cube_index_desc, sizeof(cube_index_desc));
+	cube_index_desc.Usage = D3D11_USAGE_IMMUTABLE;
+	cube_index_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	cube_index_desc.CPUAccessFlags = NULL;
+	cube_index_desc.ByteWidth = sizeof(UINT32) * 36;
+
+	D3D11_SUBRESOURCE_DATA cube_index_data;
+	ZeroMemory(&cube_index_data, sizeof(cube_index_data));
+	cube_index_data.pSysMem = cubeIndices;
+	HRESULT f = device->CreateBuffer(&cube_index_desc, &cube_index_data, &cubeIndexBuffer);
+
 	HRESULT IL = device->CreateInputLayout(vLayout, 2, Trivial_VS, sizeof(Trivial_VS), &layout);
 	HRESULT IDL = device->CreateInputLayout(depthLayout, 2, Depth_VS, sizeof(Depth_VS), &depthlayout);
 
@@ -339,7 +418,7 @@ bool DEMO_APP::Run()
 
 	if (GetAsyncKeyState('4') & 0x8000)
 	{
-		tMatrix = XMMatrixRotationAxis(tMatrix.r[1], 0.005);
+		viewFrustum.viewMatrix = XMMatrixRotationAxis(tMatrix.r[1], 0.005);
 	}
 	if (GetAsyncKeyState('6') & 0x8000)
 	{
@@ -366,16 +445,15 @@ bool DEMO_APP::Run()
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
 
 	unsigned int aef = 0;
-	unsigned int adw = sizeof(XMFLOAT4);
+	unsigned int adw = sizeof(CubeVert);
 	context->RSSetState(rastState);
-	context->IASetVertexBuffers(0, 1, &vertBuffer1, &adw, &aef);
-	context->IASetIndexBuffer(indexBuffer1, DXGI_FORMAT_R32_UINT, 0);
+	context->IASetVertexBuffers(0, 1, &cubeBuffer, &adw, &aef);
+	context->IASetIndexBuffer(cubeIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 	context->VSSetShader(depthShader, 0, 0);
 	context->PSSetShader(pixelShader, 0, 0);
 	context->IASetInputLayout(depthlayout);
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	context->DrawIndexed(84, 0, 0);
-
+	context->DrawIndexed(36, 0, 0);
 
 	swapChain->Present(0, 0);
 
