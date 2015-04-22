@@ -1,9 +1,11 @@
 #pragma pack_matrix(row_major)
+//Use for some object, get something showing
 
 struct INPUT_VERTEX
 {
-	float4 coordinate : POSITION;
-	float4 color : COLOR;
+	float3 coordinate : POS;
+	float3 uvw : UVW;
+	float3 nrm : NRM;
 };
 
 struct OUTPUT_VERTEX
@@ -12,20 +14,23 @@ struct OUTPUT_VERTEX
 	float4 projectedCoordinate : SV_POSITION;
 };
 
-// TODO: PART 3 STEP 2a
-cbuffer THIS_IS_VRAM : register( b0 )
+cbuffer THIS_IS_VRAM : register(b0)
 {
-	float3 pos;
-	float3 uvw;
-	float3 nrm;
+	float4x4 worldMatrix;
+	float4x4 viewMatrix;
+	float4x4 projMatrix;
 };
 
-OUTPUT_VERTEX main( INPUT_VERTEX fromVertexBuffer )
+OUTPUT_VERTEX main(INPUT_VERTEX fromVertexBuffer)
 {
 	OUTPUT_VERTEX sendToRasterizer = (OUTPUT_VERTEX)0;
-	float4 localH = float4(fromVertexBuffer.coordinate);
+	float4 localH = float4(fromVertexBuffer.coordinate,1);
 
-	sendToRasterizer.colorOut = fromVertexBuffer.color;
+	sendToRasterizer.colorOut = float4(1, 1, 0, 1);
+
+	localH = mul(localH, worldMatrix);
+	localH = mul(localH, viewMatrix);
+	localH = mul(localH, projMatrix);
 
 	sendToRasterizer.projectedCoordinate = localH;
 

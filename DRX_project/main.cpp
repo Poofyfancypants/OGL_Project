@@ -9,21 +9,21 @@
 
 #include "Trivial_VS.csh"
 #include "Trivial_PS.csh"
+#include "Texture_PS.csh"
+#include "Texture_VS.csh"
+#include "Model_VS.csh"
+#include "Model_PS.csh"
 #include "Depth_VS.csh"
+#include "DDSTextureLoader.h"
+
+#include "assets\teapot.h"
 
 using namespace std;
 using namespace DirectX;
 
-#define BACKBUFFER_WIDTH	500
-#define BACKBUFFER_HEIGHT	500
+#define BACKBUFFER_WIDTH	1024
+#define BACKBUFFER_HEIGHT	768
 #define SAFE_RELEASE(p) {if(p){p->Release(); p = NULL;}}
-
-struct SEND_TO_VRAM
-{
-	XMFLOAT4 constColor;
-	XMFLOAT2 constantOffset;
-	XMFLOAT2 padding;
-};
 
 struct Camera
 {
@@ -35,8 +35,17 @@ struct Camera
 struct CubeVert
 {
 	XMFLOAT4 position;
-	XMFLOAT4 color;
+	XMFLOAT3 uvw;
 };
+
+struct ObjVert
+{
+	XMFLOAT3 pos;
+	XMFLOAT3 uvw;
+	XMFLOAT3 nrm;
+};
+
+void InputTransforms(float timeStep, Camera &viewFrustum);
 
 class DEMO_APP
 {
@@ -45,7 +54,7 @@ class DEMO_APP
 	HWND							window;
 
 	XTime timer;
-
+	//Setup
 	ID3D11Device *device;
 	ID3D11DeviceContext *context;
 	ID3D11RenderTargetView *renderTarget;
@@ -54,50 +63,75 @@ class DEMO_APP
 	D3D11_VIEWPORT viewport;
 
 	ID3D11Resource * pBB;
-
-	ID3D11InputLayout *layout;
-	ID3D11InputLayout *depthlayout;
-
-	Camera viewFrustum;
-
-	ID3D11VertexShader *vertShader;
-	ID3D11VertexShader *depthShader;
-	ID3D11PixelShader *pixelShader;
-
 	ID3D11Buffer *constantBuffer;
 
+	//Misc
+	ID3D11VertexShader *depthShader; //depth kinda old, ready
+	ID3D11InputLayout *depthlayout;
+
+
+	//skybox (cube texture)
 	ID3D11Buffer *cubeBuffer;
 	ID3D11Buffer *cubeIndexBuffer;
 
-	ID3D11Buffer *indexBuffer1;
-	ID3D11Buffer *vertBuffer1;
+	ID3D11InputLayout *uvlayout; //used skybox
+	ID3D11ShaderResourceView *skyBoxSRV;
 
+	ID3D11VertexShader *vertShader;
+	ID3D11PixelShader *pixelShader;
+
+
+	//Ground plane (texture)
+	ID3D11Buffer *PlaneBuffer;
+	ID3D11Buffer *planeIndexBuffer;
+
+	//uvlayout
+	ID3D11ShaderResourceView *planeSRV;
+
+	ID3D11VertexShader *planeVsShader;
+	ID3D11PixelShader *planePsShader;
+
+	//Teapot (model)
+	ID3D11Buffer *TeaBuffer;
+	ID3D11Buffer *TeaIndexBuffer;
+
+	//Generic model setup
+	ID3D11InputLayout *modelLayout;
+	ID3D11VertexShader *modelVertexShader; //Model
+	ID3D11PixelShader *modelPixelShader; //Model
+
+	//Perspective things?
+	Camera viewFrustum;
 	ID3D11Texture2D *depthStencil = NULL;
 
 	ID3D11DepthStencilView *depthView;
 	ID3D11RasterizerState *rastState;
+	ID3D11RasterizerState *rastPlaneState;
+	ID3D11SamplerState *sampleState;
+	ID3D11SamplerState *samplePlaneState;
 
 public:
 
-	XMFLOAT4 Geom[84];
-
+	XMMATRIX skyPos;
 	CubeVert cube[8];
 
-	XMMATRIX tMatrix;
+	XMMATRIX planePos;
+	CubeVert plane[4];
+
+	//ObjVert Object[8];
+	//XMMATRIX newObject;
+
+	_OBJ_VERT_ teaOBJ[1641];
+
+	XMMATRIX tMatrix; //this might be throwing some stuff off
 
 	DEMO_APP(HINSTANCE hinst, WNDPROC proc);
 	bool Run();
 	bool ShutDown();
 };
 
-//************************************************************
-//************ CREATION OF OBJECTS & RESOURCES ***************
-//************************************************************
-
 DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 {
-	// ****************** BEGIN WARNING ***********************//
-	// WINDOWS CODE, I DON'T TEACH THIS YOU MUST KNOW IT ALREADY!
 	application = hinst;
 	appWndProc = proc;
 
@@ -120,7 +154,6 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 		NULL, NULL, application, this);
 
 	ShowWindow(window, SW_SHOW);
-	//********************* END WARNING ************************//
 
 	DXGI_SWAP_CHAIN_DESC swapDesc;
 	ZeroMemory(&swapDesc, sizeof(DXGI_SWAP_CHAIN_DESC));
@@ -182,62 +215,6 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	viewport.Width = BACKBUFFER_WIDTH;
 	viewport.Height = BACKBUFFER_HEIGHT;
 
-	for (size_t i = 0; i < 21; i++)
-	{
-		Geom[i].x = 0.5f * i - 5;
-		Geom[i].y = 0.0f;
-		Geom[i].z = -5.0f;
-		Geom[i].w = 1.0f;
-	}
-	for (size_t i = 21; i < 42; i++)
-	{
-		Geom[i].x = 0.5f * (i - 21) - 5;
-		Geom[i].y = 0.0f;
-		Geom[i].z = 5.0f;
-		Geom[i].w = 1.0f;
-	}
-	for (size_t i = 42; i < 63; i++)
-	{
-		Geom[i].x = -5.0f;
-		Geom[i].y = 0.0f;
-		Geom[i].z = 0.5f * (i - 42) - 5;
-		Geom[i].w = 1.0f;
-	}
-	for (size_t i = 63; i < 84; i++)
-	{
-		Geom[i].x = 5.0f;
-		Geom[i].y = 0.0f;
-		Geom[i].z = 0.5f * (i - 63) - 5;
-		Geom[i].w = 1.0f;
-	}
-
-	D3D11_BUFFER_DESC geom_desc;
-	ZeroMemory(&geom_desc, sizeof(geom_desc));
-	geom_desc.Usage = D3D11_USAGE_IMMUTABLE;
-	geom_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
-	geom_desc.CPUAccessFlags = NULL;
-	geom_desc.ByteWidth = sizeof(XMFLOAT4) * 84;
-
-	D3D11_BUFFER_DESC index1_desc;
-	ZeroMemory(&index1_desc, sizeof(index1_desc));
-	index1_desc.Usage = D3D11_USAGE_IMMUTABLE;
-	index1_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
-	index1_desc.CPUAccessFlags = NULL;
-	index1_desc.ByteWidth = sizeof(unsigned int) * 84;
-
-	D3D11_SUBRESOURCE_DATA geomData;
-	ZeroMemory(&geomData, sizeof(geomData));
-	geomData.pSysMem = Geom;
-	HRESULT g = device->CreateBuffer(&geom_desc, &geomData, &vertBuffer1);
-
-	UINT32 index[] = { 0, 20, 41, 21, 0, 1, 22, 23, 2, 3, 24, 25, 4, 5, 26, 27, 6, 7, 28, 29, 8, 9, 30, 31, 10, 11, 32, 33, 12, 13, 34, 35, 14, 15, 36, 37, 16, 17, 38, 39, 18, 19, 40, 41,
-		83, 82, 61, 60, 81, 80, 59, 58, 79, 78, 57, 56, 77, 76, 55, 54, 75, 74, 53, 52, 73, 72, 51, 50, 71, 70, 49, 48, 69, 68, 47, 46, 67, 66, 45, 44, 65, 64, 43, 42, 63, 62, 41 };
-
-	D3D11_SUBRESOURCE_DATA indexData;
-	ZeroMemory(&indexData, sizeof(indexData));
-	indexData.pSysMem = index;
-	HRESULT i = device->CreateBuffer(&index1_desc, &indexData, &indexBuffer1);
-
 	D3D11_BUFFER_DESC constbuff_desc;
 	ZeroMemory(&constbuff_desc, sizeof(constbuff_desc));
 	constbuff_desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -272,14 +249,77 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	bufferData.pSysMem = &viewFrustum;
 	HRESULT c = device->CreateBuffer(&constbuff_desc, &bufferData, &constantBuffer);
 
-	HRESULT Vs = device->CreateVertexShader(Trivial_VS, sizeof(Trivial_VS), NULL, &vertShader);
-	HRESULT Ds = device->CreateVertexShader(Depth_VS, sizeof(Depth_VS), NULL, &depthShader);
-	HRESULT Ps = device->CreatePixelShader(Trivial_PS, sizeof(Trivial_PS), NULL, &pixelShader);
+	//Shader Creation
+	HRESULT Vs = device->CreateVertexShader(Trivial_VS, sizeof(Trivial_VS), NULL, &vertShader); //For skybox
+	HRESULT Ps = device->CreatePixelShader(Trivial_PS, sizeof(Trivial_PS), NULL, &pixelShader); //For skybox
+	HRESULT Ds = device->CreateVertexShader(Depth_VS, sizeof(Depth_VS), NULL, &depthShader); //Normal depth
+	HRESULT mVs = device->CreateVertexShader(Model_VS, sizeof(Model_VS), NULL, &modelVertexShader); //For skybox
+	HRESULT mPs = device->CreatePixelShader(Model_PS, sizeof(Model_PS), NULL, &modelPixelShader); //For skybox
+	HRESULT pPs = device->CreatePixelShader(Texture_PS, sizeof(Texture_PS), NULL, &planePsShader); //For plane
+	HRESULT pVs = device->CreateVertexShader(Texture_VS, sizeof(Texture_VS), NULL, &planeVsShader); //For skybox
 
-	D3D11_INPUT_ELEMENT_DESC vLayout[] =
+	D3D11_RASTERIZER_DESC rast_desc; //sky
+	ZeroMemory(&rast_desc, sizeof(rast_desc));
+	rast_desc.AntialiasedLineEnable = true;
+	rast_desc.CullMode = D3D11_CULL_FRONT;
+	rast_desc.FillMode = D3D11_FILL_SOLID;
+	rast_desc.FrontCounterClockwise = false;
+	rast_desc.DepthBias = 0;
+	rast_desc.SlopeScaledDepthBias = 0.0f;
+	rast_desc.DepthBiasClamp = 0.0f;
+	rast_desc.DepthClipEnable = true;
+	rast_desc.ScissorEnable = false;
+	rast_desc.MultisampleEnable = false;
+	HRESULT r = device->CreateRasterizerState(&rast_desc, &rastState);
+
+	D3D11_RASTERIZER_DESC rast_plane_desc; //plane
+	ZeroMemory(&rast_desc, sizeof(rast_desc));
+	rast_plane_desc.AntialiasedLineEnable = true;
+	rast_plane_desc.CullMode = D3D11_CULL_BACK;
+	rast_plane_desc.FillMode = D3D11_FILL_SOLID;
+	rast_plane_desc.FrontCounterClockwise = false;
+	rast_plane_desc.DepthBias = 0;
+	rast_plane_desc.SlopeScaledDepthBias = 0.0f;
+	rast_plane_desc.DepthBiasClamp = 0.0f;
+	rast_plane_desc.DepthClipEnable = true;
+	rast_plane_desc.ScissorEnable = false;
+	rast_plane_desc.MultisampleEnable = false;
+	HRESULT rP = device->CreateRasterizerState(&rast_plane_desc, &rastPlaneState);
+
+	D3D11_SAMPLER_DESC sample_desc; //sky
+	ZeroMemory(&sample_desc, sizeof(sample_desc));
+	sample_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	sample_desc.AddressU = D3D11_TEXTURE_ADDRESS_CLAMP;
+	sample_desc.AddressV = D3D11_TEXTURE_ADDRESS_CLAMP;
+	sample_desc.AddressW = D3D11_TEXTURE_ADDRESS_CLAMP;
+	sample_desc.MinLOD = -FLT_MAX;
+	sample_desc.MaxLOD = FLT_MAX;
+	sample_desc.MaxAnisotropy = 1;
+	sample_desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+
+	HRESULT s = device->CreateSamplerState(&sample_desc, &sampleState);
+
+	D3D11_SAMPLER_DESC sample_plane_desc; //sky
+	ZeroMemory(&sample_plane_desc, sizeof(sample_plane_desc));
+	sample_plane_desc.Filter = D3D11_FILTER_MIN_MAG_MIP_LINEAR;
+	sample_plane_desc.AddressU = D3D11_TEXTURE_ADDRESS_WRAP;
+	sample_plane_desc.AddressV = D3D11_TEXTURE_ADDRESS_WRAP;
+	sample_plane_desc.AddressW = D3D11_TEXTURE_ADDRESS_WRAP;
+	sample_plane_desc.MinLOD = -FLT_MAX;
+	sample_plane_desc.MaxLOD = FLT_MAX;
+	sample_plane_desc.MaxAnisotropy = 1;
+	sample_plane_desc.ComparisonFunc = D3D11_COMPARISON_NEVER;
+
+	HRESULT sP = device->CreateSamplerState(&sample_plane_desc, &samplePlaneState);
+
+	HRESULT sSr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/Skybox/Skybox.dds", NULL, &skyBoxSRV);
+	HRESULT pSr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/swampfloor_seamless.dds", NULL, &planeSRV);
+	//HRESULT oSr = CreateDDSTextureFromFile(device, L"", NULL, &objectSRV); 
+
+	D3D11_INPUT_ELEMENT_DESC uvLayout[] =
 	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+		{ "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "UVW", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 	};
 
 	D3D11_INPUT_ELEMENT_DESC depthLayout[] =
@@ -287,6 +327,16 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
 		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
 	};
+
+	D3D11_INPUT_ELEMENT_DESC modeLLayout[] =
+	{
+		{ "POS", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "UVW", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 },
+		{ "NRM", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, D3D11_APPEND_ALIGNED_ELEMENT, D3D11_INPUT_PER_VERTEX_DATA, 0 }
+	};
+
+	skyPos = XMMatrixIdentity();
+	planePos = XMMatrixIdentity();
 
 	cube[0].position.x = -0.5;
 	cube[0].position.y = -0.5;
@@ -321,14 +371,33 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	cube[7].position.z = 0.5;
 	cube[7].position.w = 1;
 
-	cube[0].color = { 0, 1, 0, 1 };
-	cube[1].color = { 1, 0, 0, 1 };
-	cube[2].color = { 0, 1, 1, 1 };
-	cube[3].color = { 1, 1, 0, 1 };
-	cube[4].color = { 0, 1, 0, 1 };
-	cube[5].color = { 1, 0, 0, 1 };
-	cube[6].color = { 0, 1, 1, 1 };
-	cube[7].color = { 1, 1, 0, 1 };
+	plane[0].position.x = -10;
+	plane[0].position.y = -1;
+	plane[0].position.z = -10;
+	plane[0].position.w = 1.0;
+	plane[0].uvw.x = 0;
+	plane[0].uvw.y = 1;
+
+	plane[1].position.x = -10;
+	plane[1].position.y = -1;
+	plane[1].position.z = 10;
+	plane[1].position.w = 1.0;
+	plane[1].uvw.x = 0;
+	plane[1].uvw.y = 0;
+
+	plane[2].position.x = 10;
+	plane[2].position.y = -1;
+	plane[2].position.z = -10;
+	plane[2].position.w = 1.0;
+	plane[2].uvw.x = 1;
+	plane[2].uvw.y = 1;
+
+	plane[3].position.x = 10;
+	plane[3].position.y = -1;
+	plane[3].position.z = 10;
+	plane[3].position.w = 1.0;
+	plane[3].uvw.x = 0;
+	plane[3].uvw.y = 1;
 
 	D3D11_BUFFER_DESC cube_desc;
 	ZeroMemory(&cube_desc, sizeof(cube_desc));
@@ -342,7 +411,7 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	cube_data.pSysMem = cube;
 	HRESULT l = device->CreateBuffer(&cube_desc, &cube_data, &cubeBuffer);
 
-	UINT32 cubeIndices[] = {0,2,1,1,2,3, 1,3,7,7,5,1, 2,0,4,4,6,2, 4,5,6,5,7,6, 2,7,3,6,7,2, 0,1,5,5,4,0};
+	UINT32 cubeIndices[] = { 0, 2, 1, 1, 2, 3, 1, 3, 7, 7, 5, 1, 2, 0, 4, 4, 6, 2, 4, 5, 6, 5, 7, 6, 2, 7, 3, 6, 7, 2, 0, 1, 5, 5, 4, 0 };
 
 	D3D11_BUFFER_DESC cube_index_desc;
 	ZeroMemory(&cube_index_desc, sizeof(cube_index_desc));
@@ -356,14 +425,102 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	cube_index_data.pSysMem = cubeIndices;
 	HRESULT f = device->CreateBuffer(&cube_index_desc, &cube_index_data, &cubeIndexBuffer);
 
-	HRESULT IL = device->CreateInputLayout(vLayout, 2, Trivial_VS, sizeof(Trivial_VS), &layout);
+
+	D3D11_BUFFER_DESC plane_desc;
+	ZeroMemory(&plane_desc, sizeof(plane_desc));
+	plane_desc.Usage = D3D11_USAGE_IMMUTABLE;
+	plane_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	plane_desc.ByteWidth = sizeof(CubeVert) * 4;
+	plane_desc.CPUAccessFlags = NULL;
+
+	D3D11_SUBRESOURCE_DATA plane_data;
+	ZeroMemory(&plane_data, sizeof(plane_data));
+	plane_data.pSysMem = plane;
+	HRESULT pl = device->CreateBuffer(&plane_desc, &plane_data, &PlaneBuffer);
+
+	D3D11_BUFFER_DESC plane_index_desc;
+	ZeroMemory(&plane_index_desc, sizeof(plane_index_desc));
+	plane_index_desc.Usage = D3D11_USAGE_IMMUTABLE;
+	plane_index_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	plane_index_desc.CPUAccessFlags = NULL;
+	plane_index_desc.ByteWidth = sizeof(UINT32) * 6;
+
+	UINT32 planeIndices[] = { 0, 1, 2, 1, 3, 2 };
+
+	D3D11_SUBRESOURCE_DATA plane_index_data;
+	ZeroMemory(&plane_index_data, sizeof(plane_index_data));
+	plane_index_data.pSysMem = planeIndices;
+	HRESULT pI = device->CreateBuffer(&plane_index_desc, &plane_index_data, &planeIndexBuffer);
+
+	//newObject = XMMatrixIdentity();
+	/*Object[0].pos.x = -0.5;
+	Object[0].pos.y = -0.5;
+	Object[0].pos.z = -0.5;
+	Object[0].pos.w = 1.0;
+	Object[1].pos.x = 0.5;
+	Object[1].pos.y = -0.5;
+	Object[1].pos.z = -0.5;
+	Object[1].pos.w = 1;
+	Object[2].pos.x = -0.5;
+	Object[2].pos.y = 0.5;
+	Object[2].pos.z = -0.5;
+	Object[2].pos.w = 1;
+	Object[3].pos.x = 0.5;
+	Object[3].pos.y = 0.5;
+	Object[3].pos.z = -0.5;
+	Object[3].pos.w = 1;
+	Object[4].pos.x = -0.5;
+	Object[4].pos.y = -0.5;
+	Object[4].pos.z = 0.5;
+	Object[4].pos.w = 1;
+	Object[5].pos.x = 0.5;
+	Object[5].pos.y = -0.5;
+	Object[5].pos.z = 0.5;
+	Object[5].pos.w = 1;
+	Object[6].pos.x = -0.5;
+	Object[6].pos.y = 0.5;
+	Object[6].pos.z = 0.5;
+	Object[6].pos.w = 1;
+	Object[7].pos.x = 0.5;
+	Object[7].pos.y = 0.5;
+	Object[7].pos.z = 0.5;
+	Object[7].pos.w = 1;*/
+
+	D3D11_BUFFER_DESC tea_desc;
+	ZeroMemory(&tea_desc, sizeof(tea_desc));
+	tea_desc.Usage = D3D11_USAGE_IMMUTABLE;
+	tea_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	tea_desc.ByteWidth = sizeof(OBJ_VERT) * 1641;
+	tea_desc.CPUAccessFlags = NULL;
+
+	D3D11_SUBRESOURCE_DATA tea_data;
+	ZeroMemory(&tea_data, sizeof(tea_data));
+	tea_data.pSysMem = teapot_data;
+	HRESULT o = device->CreateBuffer(&tea_desc, &tea_data, &TeaBuffer);
+
+	//UINT32 objIndices[] = { 0, 2, 1, 1, 2, 3, 1, 3, 7, 7, 5, 1, 2, 0, 4, 4, 6, 2, 4, 5, 6, 5, 7, 6, 2, 7, 3, 6, 7, 2, 0, 1, 5, 5, 4, 0 };
+
+	D3D11_BUFFER_DESC tea_index_desc;
+	ZeroMemory(&tea_index_desc, sizeof(tea_index_desc));
+	tea_index_desc.Usage = D3D11_USAGE_IMMUTABLE;
+	tea_index_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	tea_index_desc.CPUAccessFlags = NULL;
+	tea_index_desc.ByteWidth = sizeof(UINT32) * 4632;
+
+	D3D11_SUBRESOURCE_DATA tea_index_data;
+	ZeroMemory(&tea_index_data, sizeof(tea_index_data));
+	tea_index_data.pSysMem = teapot_indicies;
+	HRESULT b = device->CreateBuffer(&tea_index_desc, &tea_index_data, &TeaIndexBuffer);
+
+	HRESULT UVL = device->CreateInputLayout(uvLayout, 2, Trivial_VS, sizeof(Trivial_VS), &uvlayout);
 	HRESULT IDL = device->CreateInputLayout(depthLayout, 2, Depth_VS, sizeof(Depth_VS), &depthlayout);
+	HRESULT MDL = device->CreateInputLayout(modeLLayout, 3, Model_VS, sizeof(Model_VS), &modelLayout);
 
 	viewFrustum.worldMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-	viewFrustum.viewMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 10, -20, 1 };
+	viewFrustum.viewMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, -10, 1 };
 
 	float yScale = (1 / (tan(0.5f*1.57f)));
-	float xScale = (yScale * (BACKBUFFER_WIDTH / BACKBUFFER_HEIGHT));
+	float xScale = (yScale * ((float)BACKBUFFER_WIDTH / (float)BACKBUFFER_HEIGHT));
 
 	viewFrustum.projMatrix.r[0].m128_f32[0] = xScale;
 	viewFrustum.projMatrix.r[0].m128_f32[1] = 0;
@@ -382,13 +539,16 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	viewFrustum.projMatrix.r[3].m128_f32[2] = (-(100.0f*0.1f) / (100.0f - .1f));
 	viewFrustum.projMatrix.r[3].m128_f32[3] = 0;
 
-	viewFrustum.viewMatrix = XMMatrixInverse(0, viewFrustum.viewMatrix); //DETERMINENT is most likely WRONG
+	viewFrustum.projMatrix= XMMatrixPerspectiveFovLH(XMConvertToRadians(75), ((float)BACKBUFFER_WIDTH / (float)BACKBUFFER_HEIGHT), 0.1f, 100.0f);
 
+	//viewFrustum.viewMatrix = XMMatrixInverse(0, viewFrustum.viewMatrix);
 }
 
 bool DEMO_APP::Run()
 {
 	timer.Signal();
+	float timeStep = timer.Delta();
+	D3D11_MAPPED_SUBRESOURCE mapped;
 	float buffer[4] = { 0.0, 0.0, 1.0, 1.0 };
 
 	context->OMSetRenderTargets(1, &renderTarget, depthView);
@@ -396,68 +556,150 @@ bool DEMO_APP::Run()
 	context->ClearRenderTargetView(renderTarget, buffer);
 	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1, 0);
 
-	D3D11_MAPPED_SUBRESOURCE mapped;
-
-	tMatrix = { 1, 0, 0, 0,
-		0, 1, 0, 0,
-		0, 0, 1, 0,
-		0, 0, 0, 1 };
-
-	if (GetAsyncKeyState('W') & 0x8000)
-		tMatrix.r[3].m128_f32[2] = -5.0f * timer.Delta();
-	if (GetAsyncKeyState('A') & 0x8000)
-		tMatrix.r[3].m128_f32[0] = 5.0f * timer.Delta();
-	if (GetAsyncKeyState('S') & 0x8000)
-		tMatrix.r[3].m128_f32[2] = 5.0f * timer.Delta();
-	if (GetAsyncKeyState('D') & 0x8000)
-		tMatrix.r[3].m128_f32[0] = -5.0f * timer.Delta();
-	if (GetAsyncKeyState('Q') & 0x8000)
-		tMatrix.r[3].m128_f32[1] = 5.0f * timer.Delta();
-	if (GetAsyncKeyState('E') & 0x8000)
-		tMatrix.r[3].m128_f32[1] = -5.0f * timer.Delta();
-
-	if (GetAsyncKeyState('4') & 0x8000)
-	{
-		viewFrustum.viewMatrix = XMMatrixRotationAxis(tMatrix.r[1], 0.005);
-	}
-	if (GetAsyncKeyState('6') & 0x8000)
-	{
-		tMatrix = XMMatrixRotationAxis(tMatrix.r[1], -0.005);
-	}
-	if (GetAsyncKeyState('8') & 0x8000)
-	{
-		tMatrix = XMMatrixRotationAxis(tMatrix.r[2], 0.005);
-	}
-	if (GetAsyncKeyState('2') & 0x8000)
-	{
-		tMatrix = XMMatrixRotationAxis(tMatrix.r[2], -0.005);
-	}
-
-	viewFrustum.viewMatrix = XMMatrixMultiply(tMatrix, viewFrustum.viewMatrix);
-
 	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
 
-	((Camera*)mapped.pData)->worldMatrix = viewFrustum.worldMatrix;
-	((Camera*)mapped.pData)->viewMatrix = viewFrustum.viewMatrix;
+	XMMATRIX invView = XMMatrixInverse(NULL, viewFrustum.viewMatrix);
+
+	((Camera*)mapped.pData)->worldMatrix = skyPos;
+	((Camera*)mapped.pData)->viewMatrix = invView;
 	((Camera*)mapped.pData)->projMatrix = viewFrustum.projMatrix;
-	
+
 	context->Unmap(constantBuffer, 0);
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
 
+	//Skybox
 	unsigned int aef = 0;
 	unsigned int adw = sizeof(CubeVert);
 	context->RSSetState(rastState);
+	context->PSSetShaderResources(0, 1, &skyBoxSRV);
+	context->PSSetSamplers(0, 1, &sampleState);
 	context->IASetVertexBuffers(0, 1, &cubeBuffer, &adw, &aef);
 	context->IASetIndexBuffer(cubeIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
-	context->VSSetShader(depthShader, 0, 0);
+	context->VSSetShader(vertShader, 0, 0);
 	context->PSSetShader(pixelShader, 0, 0);
-	context->IASetInputLayout(depthlayout);
+	context->IASetInputLayout(uvlayout);
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	context->DrawIndexed(36, 0, 0);
+
+	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1, 0);
+
+	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+
+	((Camera*)mapped.pData)->worldMatrix = XMMatrixIdentity();
+	((Camera*)mapped.pData)->viewMatrix = invView;
+	((Camera*)mapped.pData)->projMatrix = viewFrustum.projMatrix;
+
+	context->Unmap(constantBuffer, 0);
+
+	context->VSSetConstantBuffers(0, 1, &constantBuffer);
+	//Draw Plane (similar to skybox)
+	context->RSSetState(rastPlaneState);
+	context->PSSetShaderResources(0, 1, &planeSRV);
+	context->PSSetSamplers(0, 1, &samplePlaneState);
+	context->IASetVertexBuffers(0, 1, &PlaneBuffer, &adw, &aef);
+	context->IASetIndexBuffer(planeIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+	context->VSSetShader(planeVsShader, 0, 0);
+	context->PSSetShader(planePsShader, 0, 0);
+	context->IASetInputLayout(uvlayout);
+	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	context->DrawIndexed(6, 0, 0);
+
+	//Input
+	InputTransforms(timeStep, viewFrustum);
+	skyPos.r[3] = viewFrustum.viewMatrix.r[3];
+	planePos.r[3] = XMVectorSet(0, 0, 0, 1);
+
+	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+
+	((Camera*)mapped.pData)->worldMatrix = XMMatrixIdentity();
+	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, viewFrustum.viewMatrix);
+	((Camera*)mapped.pData)->projMatrix = viewFrustum.projMatrix;
+
+	context->Unmap(constantBuffer, 0);
+	context->VSSetConstantBuffers(0, 1, &constantBuffer);
+
+	//Draw Objects
+	//Teapot
+	unsigned int obj = sizeof(_OBJ_VERT_);
+	context->IASetVertexBuffers(0, 1, &TeaBuffer, &obj, &aef);
+	context->IASetIndexBuffer(TeaIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+	context->VSSetShader(modelVertexShader, 0, 0);
+	context->PSSetShader(modelPixelShader, 0, 0);
+	context->IASetInputLayout(modelLayout);
+	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	context->DrawIndexed(4632, 0, 0);
 
 	swapChain->Present(0, 0);
 
 	return true;
+}
+
+void InputTransforms(float timeStep, Camera &viewFrustum)
+{
+	if (GetAsyncKeyState('W') & 0x8000)
+	{
+		XMMATRIX translation = XMMatrixTranslation(0, 0, 5 * timeStep);
+		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
+	}
+	if (GetAsyncKeyState('Q') & 0x8000)
+	{
+		XMMATRIX translation = XMMatrixTranslation(-5 * timeStep, 0, 0);
+		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
+	}
+	if (GetAsyncKeyState('S') & 0x8000)
+	{
+		XMMATRIX translation = XMMatrixTranslation(0, 0, -5 * timeStep);
+		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
+	}
+	if (GetAsyncKeyState('E') & 0x8000)
+	{
+		XMMATRIX translation = XMMatrixTranslation(5 * timeStep, 0, 0);
+		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
+	}
+	if (GetAsyncKeyState('T') & 0x8000)
+	{
+		XMMATRIX translation = XMMatrixTranslation(0, -5 * timeStep, 0);
+		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
+	}
+	if (GetAsyncKeyState('Y') & 0x8000)
+	{
+		XMMATRIX translation = XMMatrixTranslation(0, 5 * timeStep, 0);
+		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
+	}
+
+	if (GetAsyncKeyState('D') & 0x8000)
+	{
+		XMMATRIX rotateTemp = XMMatrixIdentity();
+		rotateTemp.r[3] = viewFrustum.viewMatrix.r[3];
+		viewFrustum.viewMatrix.r[3] = g_XMZero;
+		viewFrustum.viewMatrix = XMMatrixMultiply(viewFrustum.viewMatrix, XMMatrixRotationY(timeStep));
+		viewFrustum.viewMatrix.r[3] = rotateTemp.r[3];
+	}
+	if (GetAsyncKeyState('A') & 0x8000)
+	{
+		XMMATRIX rotateTemp = XMMatrixIdentity();
+		rotateTemp.r[3] = viewFrustum.viewMatrix.r[3];
+		viewFrustum.viewMatrix.r[3] = g_XMZero;
+		viewFrustum.viewMatrix = XMMatrixMultiply(viewFrustum.viewMatrix, XMMatrixRotationY(-timeStep));
+		viewFrustum.viewMatrix.r[3] = rotateTemp.r[3];
+	}
+
+	if (GetAsyncKeyState('Z') & 0x8000)
+	{
+		XMMATRIX rotateTemp = XMMatrixIdentity();
+		rotateTemp.r[3] = viewFrustum.viewMatrix.r[3];
+		viewFrustum.viewMatrix.r[3] = g_XMZero;
+		viewFrustum.viewMatrix = XMMatrixMultiply(viewFrustum.viewMatrix, XMMatrixRotationX(timeStep));
+		viewFrustum.viewMatrix.r[3] = rotateTemp.r[3];
+	}
+	if (GetAsyncKeyState('C') & 0x8000)
+	{
+		XMMATRIX rotateTemp = XMMatrixIdentity();
+		rotateTemp.r[3] = viewFrustum.viewMatrix.r[3];
+		viewFrustum.viewMatrix.r[3] = g_XMZero;
+		viewFrustum.viewMatrix = XMMatrixMultiply(viewFrustum.viewMatrix, XMMatrixRotationX(-timeStep));
+		viewFrustum.viewMatrix.r[3] = rotateTemp.r[3];
+	}
 }
 
 //************************************************************
@@ -474,7 +716,7 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(swapChain);
 
 	SAFE_RELEASE(pBB);
-	SAFE_RELEASE(layout);
+	SAFE_RELEASE(uvlayout);
 	SAFE_RELEASE(depthlayout);
 	SAFE_RELEASE(depthView);
 	SAFE_RELEASE(depthStencil);
@@ -483,6 +725,8 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(depthShader);
 	SAFE_RELEASE(vertShader);
 	SAFE_RELEASE(pixelShader);
+	SAFE_RELEASE(modelVertexShader);
+	SAFE_RELEASE(modelPixelShader);
 
 	UnregisterClass(L"DirectXApplication", application);
 	return true;
@@ -520,7 +764,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	switch (message)
 	{
 	case (WM_DESTROY) : { PostQuitMessage(0); }
-		break;
+						break;
 	}
 	return DefWindowProc(hWnd, message, wParam, lParam);
 }

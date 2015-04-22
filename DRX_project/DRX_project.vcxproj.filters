@@ -32,6 +32,9 @@
     <ClInclude Include="XTime.h">
       <Filter>Header Files</Filter>
     </ClInclude>
+    <ClInclude Include="assets\teapot.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <FxCompile Include="Trivial_VS.hlsl">
@@ -41,6 +44,18 @@
       <Filter>Header Files</Filter>
     </FxCompile>
     <FxCompile Include="Depth_VS.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="Model_VS.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="Model_PS.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="Texture_PS.hlsl">
+      <Filter>Header Files</Filter>
+    </FxCompile>
+    <FxCompile Include="Texture_VS.hlsl">
       <Filter>Header Files</Filter>
     </FxCompile>
   </ItemGroup>
