@@ -38,6 +38,12 @@ struct DirLight
 	XMFLOAT4 color;
 };
 
+struct PointLight
+{
+	XMFLOAT4 pos;
+	XMFLOAT4 color;
+};
+
 struct CubeVert
 {
 	XMFLOAT4 position;
@@ -70,8 +76,13 @@ class DEMO_APP
 
 	ID3D11Resource * pBB;
 	ID3D11Buffer *constantBuffer;
-	ID3D11Buffer *dirLightBuffer;
 
+//Lighting
+	ID3D11Buffer *dirLightBuffer;
+	ID3D11Buffer *pointLightBuffer;
+
+	DirLight Light1;
+	PointLight Light2;
 
 	//Misc
 	ID3D11VertexShader *depthShader; //depth kinda old, ready
@@ -120,7 +131,6 @@ class DEMO_APP
 	ID3D11SamplerState *sampleState;
 	ID3D11SamplerState *samplePlaneState;
 
-	DirLight Light1;
 
 public:
 
@@ -241,6 +251,13 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	lightbuff_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	lightbuff_desc.ByteWidth = sizeof(DirLight);
 
+	D3D11_BUFFER_DESC pointlightbuff_desc;
+	ZeroMemory(&pointlightbuff_desc, sizeof(pointlightbuff_desc));
+	pointlightbuff_desc.Usage = D3D11_USAGE_DYNAMIC;
+	pointlightbuff_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	pointlightbuff_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	pointlightbuff_desc.ByteWidth = sizeof(DirLight);
+
 	D3D11_TEXTURE2D_DESC depth_desc;
 
 	depth_desc.Width = BACKBUFFER_WIDTH;
@@ -272,6 +289,14 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	ZeroMemory(&dirLightData, sizeof(dirLightData));
 	dirLightData.pSysMem = &Light1;
 	HRESULT l = device->CreateBuffer(&lightbuff_desc, &dirLightData, &dirLightBuffer);
+
+	Light2.color = XMFLOAT4(1, 1, 1, 1);
+	//Light2.pos = viewFrustum.viewMatrix.r[3].;
+
+	D3D11_SUBRESOURCE_DATA pointLightData;
+	ZeroMemory(&pointLightData, sizeof(pointLightData));
+	pointLightData.pSysMem = &Light2;
+	l = device->CreateBuffer(&pointlightbuff_desc, &pointLightData, &pointLightBuffer);
 
 	//Shader Creation
 	HRESULT Vs = device->CreateVertexShader(Trivial_VS, sizeof(Trivial_VS), NULL, &vertShader); //For skybox
@@ -543,7 +568,7 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	HRESULT MDL = device->CreateInputLayout(modeLLayout, 3, Model_VS, sizeof(Model_VS), &modelLayout);
 
 	viewFrustum.worldMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-	viewFrustum.viewMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, -10, 1 };
+	viewFrustum.viewMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 5, -10, 1 };
 
 	float yScale = (1 / (tan(0.5f*1.57f)));
 	float xScale = (yScale * ((float)BACKBUFFER_WIDTH / (float)BACKBUFFER_HEIGHT));
@@ -567,7 +592,6 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 
 	viewFrustum.projMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(75), ((float)BACKBUFFER_WIDTH / (float)BACKBUFFER_HEIGHT), 0.1f, 100.0f);
 
-	
 }
 
 bool DEMO_APP::Run()
@@ -595,7 +619,9 @@ bool DEMO_APP::Run()
 	((DirLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
 	context->Unmap(dirLightBuffer, 0);
 
-
+	//context->Map(pointLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	//((PointLight*)mapped.pData)->pos = viewFrustum.viewMatrix.r[3];
+	//context->Unmap(dirLightBuffer, 0);
 
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
 	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
@@ -627,6 +653,10 @@ bool DEMO_APP::Run()
 	((DirLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
 	context->Unmap(dirLightBuffer, 0);
 
+	//context->Map(pointLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	//((PointLight*)mapped.pData)->pos = viewFrustum.viewMatrix.r[3];
+	//context->Unmap(dirLightBuffer, 0);
+
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
 	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
 
@@ -657,6 +687,10 @@ bool DEMO_APP::Run()
 	((DirLight*)mapped.pData)->direction = XMFLOAT4(1, -1, 0, 1);
 	((DirLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
 	context->Unmap(dirLightBuffer, 0);
+
+	//context->Map(pointLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	//((PointLight*)mapped.pData)->pos = viewFrustum.viewMatrix.r[3];
+	//context->Unmap(dirLightBuffer, 0);
 
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
 	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
@@ -753,7 +787,21 @@ void InputTransforms(float timeStep, Camera &viewFrustum)
 
 bool DEMO_APP::ShutDown()
 {
-	// TODO: PART 1 STEP 6
+	SAFE_RELEASE(constantBuffer);
+	SAFE_RELEASE(dirLightBuffer);
+	SAFE_RELEASE(pointLightBuffer);
+	SAFE_RELEASE(cubeBuffer);
+	SAFE_RELEASE(cubeIndexBuffer);
+	SAFE_RELEASE(skyBoxSRV);
+	SAFE_RELEASE(PlaneBuffer);
+	SAFE_RELEASE(planeIndexBuffer);
+	SAFE_RELEASE(planeSRV);
+	SAFE_RELEASE(TeaBuffer);
+	SAFE_RELEASE(TeaIndexBuffer);
+	SAFE_RELEASE(teapotSRV);
+	SAFE_RELEASE(rastPlaneState);
+	SAFE_RELEASE(sampleState);
+	SAFE_RELEASE(samplePlaneState);
 
 	SAFE_RELEASE(device);
 	SAFE_RELEASE(context);
@@ -763,6 +811,7 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(pBB);
 	SAFE_RELEASE(uvlayout);
 	SAFE_RELEASE(depthlayout);
+	SAFE_RELEASE(modelLayout);
 	SAFE_RELEASE(depthView);
 	SAFE_RELEASE(depthStencil);
 	SAFE_RELEASE(rastState);
@@ -778,13 +827,6 @@ bool DEMO_APP::ShutDown()
 	UnregisterClass(L"DirectXApplication", application);
 	return true;
 }
-
-//************************************************************
-//************ WINDOWS RELATED *******************************
-//************************************************************
-
-// ****************** BEGIN WARNING ***********************// 
-// WINDOWS CODE, I DON'T TEACH THIS YOU MUST KNOW IT ALREADY!
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow);
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wparam, LPARAM lparam);
@@ -815,4 +857,3 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	}
 	return DefWindowProc(hWnd, message, wParam, lParam);
 }
-//********************* END WARNING ************************//
