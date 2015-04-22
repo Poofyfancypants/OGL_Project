@@ -1,18 +1,39 @@
-﻿Build started 4/15/2015 4:08:30 PM.
+﻿Build started 4/22/2015 12:33:53 AM.
      1>Project "C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\DRX_project.vcxproj" on node 2 (Build target(s)).
-     1>ClCompile:
+     1>FxCompile:
+         C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe /nologo /E"main" /T vs_4_0 /Fh "Depth_VS.csh" /Fo "C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Depth_VS.cso" /Vn "Depth_VS" Depth_VS.hlsl 
+         compilation header save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Depth_VS.csh
+         compilation object save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Depth_VS.cso
+         C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe /nologo /E"main" /T ps_4_0 /Fh "Model_PS.csh" /Fo "C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Model_PS.cso" /Vn "Model_PS" Model_PS.hlsl 
+     1>C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Model_PS.hlsl(19,27-74): warning X3206: 'dot': implicit truncation of vector type
+     1>C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Model_PS.hlsl(22,36-67): warning X3206: 'Sample': implicit truncation of vector type
+         
+         compilation header save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Model_PS.csh
+         compilation object save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Model_PS.cso
+         C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe /nologo /E"main" /T vs_4_0 /Fh "Model_VS.csh" /Fo "C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Model_VS.cso" /Vn "Model_VS" Model_VS.hlsl 
+         compilation header save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Model_VS.csh
+         compilation object save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Model_VS.cso
+         C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe /nologo /E"main" /T ps_4_0 /Fh "Texture_PS.csh" /Fo "C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Texture_PS.cso" /Vn "Texture_PS" Texture_PS.hlsl 
+     1>C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Texture_PS.hlsl(19,21-61): warning X3206: 'dot': implicit truncation of vector type
+     1>C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Texture_PS.hlsl(20,30-60): warning X3206: 'Sample': implicit truncation of vector type
+         
+         compilation header save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Texture_PS.csh
+         compilation object save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Texture_PS.cso
+         C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe /nologo /E"main" /T vs_4_0 /Fh "Texture_VS.csh" /Fo "C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Texture_VS.cso" /Vn "Texture_VS" Texture_VS.hlsl 
+         compilation header save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Texture_VS.csh
+         compilation object save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Texture_VS.cso
+         C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe /nologo /E"main" /T ps_4_0 /Fh "Trivial_PS.csh" /Fo "C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Trivial_PS.cso" /Vn "Trivial_PS" Trivial_PS.hlsl 
+         compilation header save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Trivial_PS.csh
+         compilation object save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Trivial_PS.cso
+         C:\Program Files (x86)\Windows Kits\8.1\bin\x86\fxc.exe /nologo /E"main" /T vs_4_0 /Fh "Trivial_VS.csh" /Fo "C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Trivial_VS.cso" /Vn "Trivial_VS" Trivial_VS.hlsl 
+     1>C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Trivial_VS.hlsl(34,2-46): warning X3206: implicit truncation of vector type
+         
+         compilation header save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\DRX_project\Trivial_VS.csh
+         compilation object save succeeded; see C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\Trivial_VS.cso
+       ClCompile:
          C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\x86_amd64\CL.exe /c /Zi /nologo /W3 /WX- /sdl /O2 /Oi /GL /D WIN32 /D NDEBUG /D _WINDOWS /D _UNICODE /D UNICODE /Gm- /EHsc /MD /GS /Gy /fp:precise /Zc:wchar_t /Zc:forScope /Fo"x64\Release\\" /Fd"x64\Release\vc120.pdb" /Gd /TP /errorReport:prompt main.cpp
          main.cpp
-     1>main.cpp(407): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>main.cpp(409): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>main.cpp(411): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>main.cpp(413): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>main.cpp(415): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>main.cpp(417): warning C4244: '=' : conversion from 'double' to 'float', possible loss of data
-     1>main.cpp(421): warning C4305: 'argument' : truncation from 'double' to 'float'
-     1>main.cpp(425): warning C4305: 'argument' : truncation from 'double' to 'float'
-     1>main.cpp(429): warning C4305: 'argument' : truncation from 'double' to 'float'
-     1>main.cpp(433): warning C4305: 'argument' : truncation from 'double' to 'float'
+     1>main.cpp(576): warning C4244: 'initializing' : conversion from 'double' to 'float', possible loss of data
        Link:
          C:\Program Files (x86)\Microsoft Visual Studio 12.0\VC\bin\x86_amd64\link.exe /ERRORREPORT:PROMPT /OUT:"C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\DRX_project.exe" /INCREMENTAL:NO /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\DRX_project.pdb" /SUBSYSTEM:WINDOWS /OPT:REF /OPT:ICF /LTCG /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:"C:\Users\Evan Doyle\Desktop\April DRX2\OGL_Repo\x64\Release\DRX_project.lib" /MACHINE:X64 x64\Release\DDSTextureLoader.obj
          x64\Release\main.obj
@@ -24,4 +45,4 @@
 
 Build succeeded.
 
-Time Elapsed 00:00:01.78
+Time Elapsed 00:00:02.99
