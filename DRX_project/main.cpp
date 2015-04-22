@@ -32,6 +32,12 @@ struct Camera
 	XMMATRIX projMatrix;
 };
 
+struct DirLight
+{
+	XMFLOAT4 direction;
+	XMFLOAT4 color;
+};
+
 struct CubeVert
 {
 	XMFLOAT4 position;
@@ -64,6 +70,8 @@ class DEMO_APP
 
 	ID3D11Resource * pBB;
 	ID3D11Buffer *constantBuffer;
+	ID3D11Buffer *dirLightBuffer;
+
 
 	//Misc
 	ID3D11VertexShader *depthShader; //depth kinda old, ready
@@ -95,6 +103,8 @@ class DEMO_APP
 	ID3D11Buffer *TeaBuffer;
 	ID3D11Buffer *TeaIndexBuffer;
 
+	ID3D11ShaderResourceView *teapotSRV;
+
 	//Generic model setup
 	ID3D11InputLayout *modelLayout;
 	ID3D11VertexShader *modelVertexShader; //Model
@@ -109,6 +119,8 @@ class DEMO_APP
 	ID3D11RasterizerState *rastPlaneState;
 	ID3D11SamplerState *sampleState;
 	ID3D11SamplerState *samplePlaneState;
+
+	DirLight Light1;
 
 public:
 
@@ -222,6 +234,13 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	constbuff_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	constbuff_desc.ByteWidth = sizeof(Camera);
 
+	D3D11_BUFFER_DESC lightbuff_desc;
+	ZeroMemory(&lightbuff_desc, sizeof(lightbuff_desc));
+	lightbuff_desc.Usage = D3D11_USAGE_DYNAMIC;
+	lightbuff_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	lightbuff_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	lightbuff_desc.ByteWidth = sizeof(DirLight);
+
 	D3D11_TEXTURE2D_DESC depth_desc;
 
 	depth_desc.Width = BACKBUFFER_WIDTH;
@@ -248,6 +267,11 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	ZeroMemory(&bufferData, sizeof(bufferData));
 	bufferData.pSysMem = &viewFrustum;
 	HRESULT c = device->CreateBuffer(&constbuff_desc, &bufferData, &constantBuffer);
+
+	D3D11_SUBRESOURCE_DATA dirLightData;
+	ZeroMemory(&dirLightData, sizeof(dirLightData));
+	dirLightData.pSysMem = &Light1;
+	HRESULT l = device->CreateBuffer(&lightbuff_desc, &dirLightData, &dirLightBuffer);
 
 	//Shader Creation
 	HRESULT Vs = device->CreateVertexShader(Trivial_VS, sizeof(Trivial_VS), NULL, &vertShader); //For skybox
@@ -313,7 +337,9 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	HRESULT sP = device->CreateSamplerState(&sample_plane_desc, &samplePlaneState);
 
 	HRESULT sSr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/Skybox/Skybox.dds", NULL, &skyBoxSRV);
-	HRESULT pSr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/swampfloor_seamless.dds", NULL, &planeSRV);
+	HRESULT pSr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/platform_seamless.dds", NULL, &planeSRV);
+	HRESULT tSr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/BrassTile_seamless.dds", NULL, &teapotSRV);
+
 	//HRESULT oSr = CreateDDSTextureFromFile(device, L"", NULL, &objectSRV); 
 
 	D3D11_INPUT_ELEMENT_DESC uvLayout[] =
@@ -409,7 +435,7 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	D3D11_SUBRESOURCE_DATA cube_data;
 	ZeroMemory(&cube_data, sizeof(cube_data));
 	cube_data.pSysMem = cube;
-	HRESULT l = device->CreateBuffer(&cube_desc, &cube_data, &cubeBuffer);
+	HRESULT lc = device->CreateBuffer(&cube_desc, &cube_data, &cubeBuffer);
 
 	UINT32 cubeIndices[] = { 0, 2, 1, 1, 2, 3, 1, 3, 7, 7, 5, 1, 2, 0, 4, 4, 6, 2, 4, 5, 6, 5, 7, 6, 2, 7, 3, 6, 7, 2, 0, 1, 5, 5, 4, 0 };
 
@@ -539,9 +565,9 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	viewFrustum.projMatrix.r[3].m128_f32[2] = (-(100.0f*0.1f) / (100.0f - .1f));
 	viewFrustum.projMatrix.r[3].m128_f32[3] = 0;
 
-	viewFrustum.projMatrix= XMMatrixPerspectiveFovLH(XMConvertToRadians(75), ((float)BACKBUFFER_WIDTH / (float)BACKBUFFER_HEIGHT), 0.1f, 100.0f);
+	viewFrustum.projMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(75), ((float)BACKBUFFER_WIDTH / (float)BACKBUFFER_HEIGHT), 0.1f, 100.0f);
 
-	//viewFrustum.viewMatrix = XMMatrixInverse(0, viewFrustum.viewMatrix);
+	
 }
 
 bool DEMO_APP::Run()
@@ -554,18 +580,25 @@ bool DEMO_APP::Run()
 	context->OMSetRenderTargets(1, &renderTarget, depthView);
 	context->RSSetViewports(1, &viewport);
 	context->ClearRenderTargetView(renderTarget, buffer);
+
 	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1, 0);
 
 	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-
 	XMMATRIX invView = XMMatrixInverse(NULL, viewFrustum.viewMatrix);
-
 	((Camera*)mapped.pData)->worldMatrix = skyPos;
 	((Camera*)mapped.pData)->viewMatrix = invView;
 	((Camera*)mapped.pData)->projMatrix = viewFrustum.projMatrix;
-
 	context->Unmap(constantBuffer, 0);
+
+	context->Map(dirLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((DirLight*)mapped.pData)->direction = XMFLOAT4(1, -1, 0, 1);
+	((DirLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
+	context->Unmap(dirLightBuffer, 0);
+
+
+
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
+	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
 
 	//Skybox
 	unsigned int aef = 0;
@@ -584,14 +617,19 @@ bool DEMO_APP::Run()
 	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1, 0);
 
 	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-
 	((Camera*)mapped.pData)->worldMatrix = XMMatrixIdentity();
 	((Camera*)mapped.pData)->viewMatrix = invView;
 	((Camera*)mapped.pData)->projMatrix = viewFrustum.projMatrix;
-
 	context->Unmap(constantBuffer, 0);
 
+	context->Map(dirLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((DirLight*)mapped.pData)->direction = XMFLOAT4(1, -1, 0, 1);
+	((DirLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
+	context->Unmap(dirLightBuffer, 0);
+
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
+	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
+
 	//Draw Plane (similar to skybox)
 	context->RSSetState(rastPlaneState);
 	context->PSSetShaderResources(0, 1, &planeSRV);
@@ -610,18 +648,25 @@ bool DEMO_APP::Run()
 	planePos.r[3] = XMVectorSet(0, 0, 0, 1);
 
 	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-
 	((Camera*)mapped.pData)->worldMatrix = XMMatrixIdentity();
 	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, viewFrustum.viewMatrix);
 	((Camera*)mapped.pData)->projMatrix = viewFrustum.projMatrix;
-
 	context->Unmap(constantBuffer, 0);
+
+	context->Map(dirLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((DirLight*)mapped.pData)->direction = XMFLOAT4(1, -1, 0, 1);
+	((DirLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
+	context->Unmap(dirLightBuffer, 0);
+
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
+	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
 
 	//Draw Objects
 	//Teapot
 	unsigned int obj = sizeof(_OBJ_VERT_);
 	context->IASetVertexBuffers(0, 1, &TeaBuffer, &obj, &aef);
+	context->PSSetShaderResources(0, 1, &teapotSRV);
+	context->PSSetSamplers(0, 1, &samplePlaneState);
 	context->IASetIndexBuffer(TeaIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 	context->VSSetShader(modelVertexShader, 0, 0);
 	context->PSSetShader(modelPixelShader, 0, 0);
@@ -727,6 +772,8 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(pixelShader);
 	SAFE_RELEASE(modelVertexShader);
 	SAFE_RELEASE(modelPixelShader);
+	SAFE_RELEASE(planeVsShader);
+	SAFE_RELEASE(planePsShader);
 
 	UnregisterClass(L"DirectXApplication", application);
 	return true;

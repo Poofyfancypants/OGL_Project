@@ -3,15 +3,16 @@
 
 struct INPUT_VERTEX
 {
-	float3 coordinate : POS;
+	float4 coordinate : POS;
 	float3 uvw : UVW;
 	float3 nrm : NRM;
 };
 
 struct OUTPUT_VERTEX
 {
-	float4 colorOut : COLOR;
-	float4 projectedCoordinate : SV_POSITION;
+	float4 posOut : SV_POSITION;
+	float3 uvwOut : UV;
+	float3 nrmOut : NRM;
 };
 
 cbuffer THIS_IS_VRAM : register(b0)
@@ -24,15 +25,14 @@ cbuffer THIS_IS_VRAM : register(b0)
 OUTPUT_VERTEX main(INPUT_VERTEX fromVertexBuffer)
 {
 	OUTPUT_VERTEX sendToRasterizer = (OUTPUT_VERTEX)0;
-	float4 localH = float4(fromVertexBuffer.coordinate,1);
-
-	sendToRasterizer.colorOut = float4(1, 1, 0, 1);
+	float4 localH = float4(fromVertexBuffer.coordinate.xyz,1);
 
 	localH = mul(localH, worldMatrix);
 	localH = mul(localH, viewMatrix);
 	localH = mul(localH, projMatrix);
 
-	sendToRasterizer.projectedCoordinate = localH;
+	sendToRasterizer.posOut = localH;
+	sendToRasterizer.nrmOut = fromVertexBuffer.nrm;
 
 	return sendToRasterizer;
 }
