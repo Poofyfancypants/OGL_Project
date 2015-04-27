@@ -11,6 +11,7 @@ struct INPUT_VERTEX
 struct OUTPUT_VERTEX
 {
 	float4 posOut : SV_POSITION;
+	float4 posW : POSITION;
 	float3 uvwOut : UV;
 	float3 nrmOut : NRM;
 };
@@ -28,6 +29,7 @@ OUTPUT_VERTEX main(INPUT_VERTEX fromVertexBuffer)
 	float4 localH = float4(fromVertexBuffer.coordinate.xyz,1);
 
 	localH = mul(localH, worldMatrix);
+	sendToRasterizer.posW = localH;
 	localH = mul(localH, viewMatrix);
 	localH = mul(localH, projMatrix);
 

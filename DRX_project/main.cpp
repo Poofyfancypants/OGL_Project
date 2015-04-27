@@ -14,9 +14,13 @@
 #include "Model_VS.csh"
 #include "Model_PS.csh"
 #include "Depth_VS.csh"
+#include "Geometry_GS.csh"
+#include "Geometry_VS.csh"
+#include "Geometry_PS.csh"
 #include "DDSTextureLoader.h"
 
 #include "assets\teapot.h"
+#include "assets\test pyramid.h"
 
 using namespace std;
 using namespace DirectX;
@@ -42,6 +46,14 @@ struct PointLight
 {
 	XMFLOAT4 pos;
 	XMFLOAT4 color;
+};
+
+struct SpotLight
+{
+	XMFLOAT4 pos;
+	XMFLOAT4 color;
+	XMFLOAT4 coneDir;
+	XMFLOAT4 coneRatio;
 };
 
 struct CubeVert
@@ -77,12 +89,14 @@ class DEMO_APP
 	ID3D11Resource * pBB;
 	ID3D11Buffer *constantBuffer;
 
-//Lighting
+	//Lighting
 	ID3D11Buffer *dirLightBuffer;
 	ID3D11Buffer *pointLightBuffer;
+	ID3D11Buffer *spotLightBuffer;
 
 	DirLight Light1;
 	PointLight Light2;
+	SpotLight Light3;
 
 	//Misc
 	ID3D11VertexShader *depthShader; //depth kinda old, ready
@@ -100,6 +114,13 @@ class DEMO_APP
 	ID3D11PixelShader *pixelShader;
 
 
+	//Geometry Shader
+	ID3D11Buffer *geomBuffer;
+	ID3D11GeometryShader *geomGsShader;
+	ID3D11VertexShader *geomVsShader;
+	ID3D11PixelShader *geomPsShader;
+
+
 	//Ground plane (texture)
 	ID3D11Buffer *PlaneBuffer;
 	ID3D11Buffer *planeIndexBuffer;
@@ -115,6 +136,11 @@ class DEMO_APP
 	ID3D11Buffer *TeaIndexBuffer;
 
 	ID3D11ShaderResourceView *teapotSRV;
+	//Pyramid
+	ID3D11Buffer *PyrBuffer;
+	ID3D11Buffer *PyrIndexBuffer;
+
+	ID3D11ShaderResourceView *pyramidSRV;
 
 	//Generic model setup
 	ID3D11InputLayout *modelLayout;
@@ -123,6 +149,9 @@ class DEMO_APP
 
 	//Perspective things?
 	Camera viewFrustum;
+
+	Camera seperateFrustum; //
+
 	ID3D11Texture2D *depthStencil = NULL;
 
 	ID3D11DepthStencilView *depthView;
@@ -130,7 +159,6 @@ class DEMO_APP
 	ID3D11RasterizerState *rastPlaneState;
 	ID3D11SamplerState *sampleState;
 	ID3D11SamplerState *samplePlaneState;
-
 
 public:
 
@@ -140,12 +168,16 @@ public:
 	XMMATRIX planePos;
 	CubeVert plane[4];
 
+	PointLight geomVert;
 	//ObjVert Object[8];
 	//XMMATRIX newObject;
 
-	_OBJ_VERT_ teaOBJ[1641];
+	XMMATRIX teapotPos;
+	XMMATRIX pyramidPos;
 
-	XMMATRIX tMatrix; //this might be throwing some stuff off
+	float lightAngle;
+
+	XMMATRIX tMatrix;
 
 	DEMO_APP(HINSTANCE hinst, WNDPROC proc);
 	bool Run();
@@ -244,6 +276,13 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	constbuff_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	constbuff_desc.ByteWidth = sizeof(Camera);
 
+	D3D11_BUFFER_DESC geombuff_desc;
+	ZeroMemory(&geombuff_desc, sizeof(geombuff_desc));
+	geombuff_desc.Usage = D3D11_USAGE_DYNAMIC;
+	geombuff_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	geombuff_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	geombuff_desc.ByteWidth = sizeof(DirLight);
+
 	D3D11_BUFFER_DESC lightbuff_desc;
 	ZeroMemory(&lightbuff_desc, sizeof(lightbuff_desc));
 	lightbuff_desc.Usage = D3D11_USAGE_DYNAMIC;
@@ -257,6 +296,13 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	pointlightbuff_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	pointlightbuff_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	pointlightbuff_desc.ByteWidth = sizeof(DirLight);
+
+	D3D11_BUFFER_DESC spotlightbuff_desc;
+	ZeroMemory(&spotlightbuff_desc, sizeof(spotlightbuff_desc));
+	spotlightbuff_desc.Usage = D3D11_USAGE_DYNAMIC;
+	spotlightbuff_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	spotlightbuff_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	spotlightbuff_desc.ByteWidth = sizeof(SpotLight);
 
 	D3D11_TEXTURE2D_DESC depth_desc;
 
@@ -280,6 +326,11 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	depthS_desc.Texture2D.MipSlice = 0;
 	HRESULT d = device->CreateDepthStencilView(depthStencil, &depthS_desc, &depthView);
 
+	D3D11_SUBRESOURCE_DATA geomData;
+	ZeroMemory(&geomData, sizeof(geomData));
+	geomData.pSysMem = &geomVert;
+	d = device->CreateBuffer(&geombuff_desc, &geomData, &geomBuffer);
+
 	D3D11_SUBRESOURCE_DATA bufferData;
 	ZeroMemory(&bufferData, sizeof(bufferData));
 	bufferData.pSysMem = &viewFrustum;
@@ -291,21 +342,32 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	HRESULT l = device->CreateBuffer(&lightbuff_desc, &dirLightData, &dirLightBuffer);
 
 	Light2.color = XMFLOAT4(1, 1, 1, 1);
-	//Light2.pos = viewFrustum.viewMatrix.r[3].;
+	Light2.pos.x = viewFrustum.viewMatrix.r[3].m128_f32[0];
+	Light2.pos.y = viewFrustum.viewMatrix.r[3].m128_f32[1];
+	Light2.pos.z = viewFrustum.viewMatrix.r[3].m128_f32[2];
+	Light2.pos.w = viewFrustum.viewMatrix.r[3].m128_f32[3];
 
 	D3D11_SUBRESOURCE_DATA pointLightData;
 	ZeroMemory(&pointLightData, sizeof(pointLightData));
 	pointLightData.pSysMem = &Light2;
 	l = device->CreateBuffer(&pointlightbuff_desc, &pointLightData, &pointLightBuffer);
 
+	D3D11_SUBRESOURCE_DATA spotLightData;
+	ZeroMemory(&spotLightData, sizeof(spotLightData));
+	spotLightData.pSysMem = &Light3;
+	l = device->CreateBuffer(&spotlightbuff_desc, &spotLightData, &spotLightBuffer);
+
 	//Shader Creation
 	HRESULT Vs = device->CreateVertexShader(Trivial_VS, sizeof(Trivial_VS), NULL, &vertShader); //For skybox
 	HRESULT Ps = device->CreatePixelShader(Trivial_PS, sizeof(Trivial_PS), NULL, &pixelShader); //For skybox
-	HRESULT Ds = device->CreateVertexShader(Depth_VS, sizeof(Depth_VS), NULL, &depthShader); //Normal depth
-	HRESULT mVs = device->CreateVertexShader(Model_VS, sizeof(Model_VS), NULL, &modelVertexShader); //For skybox
-	HRESULT mPs = device->CreatePixelShader(Model_PS, sizeof(Model_PS), NULL, &modelPixelShader); //For skybox
-	HRESULT pPs = device->CreatePixelShader(Texture_PS, sizeof(Texture_PS), NULL, &planePsShader); //For plane
-	HRESULT pVs = device->CreateVertexShader(Texture_VS, sizeof(Texture_VS), NULL, &planeVsShader); //For skybox
+	HRESULT Gs = device->CreateGeometryShader(Geometry_GS, sizeof(Geometry_GS), NULL, &geomGsShader);
+	Vs = device->CreateVertexShader(Depth_VS, sizeof(Depth_VS), NULL, &depthShader); //Normal depth
+	Vs = device->CreateVertexShader(Model_VS, sizeof(Model_VS), NULL, &modelVertexShader); //For skybox
+	Ps = device->CreatePixelShader(Model_PS, sizeof(Model_PS), NULL, &modelPixelShader); //For skybox
+	Ps = device->CreatePixelShader(Texture_PS, sizeof(Texture_PS), NULL, &planePsShader); //For plane
+	Vs = device->CreateVertexShader(Texture_VS, sizeof(Texture_VS), NULL, &planeVsShader); //For skybox
+	Vs = device->CreateVertexShader(Geometry_VS, sizeof(Geometry_VS), NULL, &geomVsShader);
+	Ps = device->CreatePixelShader(Geometry_PS, sizeof(Geometry_PS), NULL, &geomPsShader);
 
 	D3D11_RASTERIZER_DESC rast_desc; //sky
 	ZeroMemory(&rast_desc, sizeof(rast_desc));
@@ -361,9 +423,10 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 
 	HRESULT sP = device->CreateSamplerState(&sample_plane_desc, &samplePlaneState);
 
-	HRESULT sSr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/Skybox/Skybox.dds", NULL, &skyBoxSRV);
-	HRESULT pSr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/platform_seamless.dds", NULL, &planeSRV);
-	HRESULT tSr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/BrassTile_seamless.dds", NULL, &teapotSRV);
+	HRESULT Sr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/Skybox/Skybox.dds", NULL, &skyBoxSRV);
+	Sr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/platform_seamless.dds", NULL, &planeSRV);
+	Sr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/BrassTile_seamless.dds", NULL, &teapotSRV);
+	Sr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/sand_seamless.dds", NULL, &pyramidSRV);
 
 	//HRESULT oSr = CreateDDSTextureFromFile(device, L"", NULL, &objectSRV); 
 
@@ -388,6 +451,13 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 
 	skyPos = XMMatrixIdentity();
 	planePos = XMMatrixIdentity();
+	teapotPos = XMMatrixIdentity();
+	pyramidPos = XMMatrixIdentity();
+
+	geomVert.pos = { 5, 5, 5, 0 };
+	geomVert.color = { 1, 1, 1, 1 };
+
+	lightAngle = 0.0f;
 
 	cube[0].position.x = -0.5;
 	cube[0].position.y = -0.5;
@@ -476,7 +546,6 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	cube_index_data.pSysMem = cubeIndices;
 	HRESULT f = device->CreateBuffer(&cube_index_desc, &cube_index_data, &cubeIndexBuffer);
 
-
 	D3D11_BUFFER_DESC plane_desc;
 	ZeroMemory(&plane_desc, sizeof(plane_desc));
 	plane_desc.Usage = D3D11_USAGE_IMMUTABLE;
@@ -503,40 +572,6 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	plane_index_data.pSysMem = planeIndices;
 	HRESULT pI = device->CreateBuffer(&plane_index_desc, &plane_index_data, &planeIndexBuffer);
 
-	//newObject = XMMatrixIdentity();
-	/*Object[0].pos.x = -0.5;
-	Object[0].pos.y = -0.5;
-	Object[0].pos.z = -0.5;
-	Object[0].pos.w = 1.0;
-	Object[1].pos.x = 0.5;
-	Object[1].pos.y = -0.5;
-	Object[1].pos.z = -0.5;
-	Object[1].pos.w = 1;
-	Object[2].pos.x = -0.5;
-	Object[2].pos.y = 0.5;
-	Object[2].pos.z = -0.5;
-	Object[2].pos.w = 1;
-	Object[3].pos.x = 0.5;
-	Object[3].pos.y = 0.5;
-	Object[3].pos.z = -0.5;
-	Object[3].pos.w = 1;
-	Object[4].pos.x = -0.5;
-	Object[4].pos.y = -0.5;
-	Object[4].pos.z = 0.5;
-	Object[4].pos.w = 1;
-	Object[5].pos.x = 0.5;
-	Object[5].pos.y = -0.5;
-	Object[5].pos.z = 0.5;
-	Object[5].pos.w = 1;
-	Object[6].pos.x = -0.5;
-	Object[6].pos.y = 0.5;
-	Object[6].pos.z = 0.5;
-	Object[6].pos.w = 1;
-	Object[7].pos.x = 0.5;
-	Object[7].pos.y = 0.5;
-	Object[7].pos.z = 0.5;
-	Object[7].pos.w = 1;*/
-
 	D3D11_BUFFER_DESC tea_desc;
 	ZeroMemory(&tea_desc, sizeof(tea_desc));
 	tea_desc.Usage = D3D11_USAGE_IMMUTABLE;
@@ -549,7 +584,17 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	tea_data.pSysMem = teapot_data;
 	HRESULT o = device->CreateBuffer(&tea_desc, &tea_data, &TeaBuffer);
 
-	//UINT32 objIndices[] = { 0, 2, 1, 1, 2, 3, 1, 3, 7, 7, 5, 1, 2, 0, 4, 4, 6, 2, 4, 5, 6, 5, 7, 6, 2, 7, 3, 6, 7, 2, 0, 1, 5, 5, 4, 0 };
+	D3D11_BUFFER_DESC pyr_desc;
+	ZeroMemory(&pyr_desc, sizeof(pyr_desc));
+	pyr_desc.Usage = D3D11_USAGE_IMMUTABLE;
+	pyr_desc.BindFlags = D3D11_BIND_VERTEX_BUFFER;
+	pyr_desc.ByteWidth = sizeof(OBJ_VERT) * 768;
+	pyr_desc.CPUAccessFlags = NULL;
+
+	D3D11_SUBRESOURCE_DATA pyr_data;
+	ZeroMemory(&pyr_data, sizeof(pyr_data));
+	pyr_data.pSysMem = test_pyramid_data;
+	o = device->CreateBuffer(&pyr_desc, &pyr_data, &PyrBuffer);
 
 	D3D11_BUFFER_DESC tea_index_desc;
 	ZeroMemory(&tea_index_desc, sizeof(tea_index_desc));
@@ -562,6 +607,18 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	ZeroMemory(&tea_index_data, sizeof(tea_index_data));
 	tea_index_data.pSysMem = teapot_indicies;
 	HRESULT b = device->CreateBuffer(&tea_index_desc, &tea_index_data, &TeaIndexBuffer);
+
+	D3D11_BUFFER_DESC pyr_index_desc;
+	ZeroMemory(&pyr_index_desc, sizeof(pyr_index_desc));
+	pyr_index_desc.Usage = D3D11_USAGE_IMMUTABLE;
+	pyr_index_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	pyr_index_desc.CPUAccessFlags = NULL;
+	pyr_index_desc.ByteWidth = sizeof(UINT32) * 1674;
+
+	D3D11_SUBRESOURCE_DATA pyr_index_data;
+	ZeroMemory(&pyr_index_data, sizeof(pyr_index_data));
+	pyr_index_data.pSysMem = test_pyramid_indicies;
+	b = device->CreateBuffer(&pyr_index_desc, &pyr_index_data, &PyrIndexBuffer);
 
 	HRESULT UVL = device->CreateInputLayout(uvLayout, 2, Trivial_VS, sizeof(Trivial_VS), &uvlayout);
 	HRESULT IDL = device->CreateInputLayout(depthLayout, 2, Depth_VS, sizeof(Depth_VS), &depthlayout);
@@ -591,7 +648,6 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	viewFrustum.projMatrix.r[3].m128_f32[3] = 0;
 
 	viewFrustum.projMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(75), ((float)BACKBUFFER_WIDTH / (float)BACKBUFFER_HEIGHT), 0.1f, 100.0f);
-
 }
 
 bool DEMO_APP::Run()
@@ -600,6 +656,17 @@ bool DEMO_APP::Run()
 	float timeStep = timer.Delta();
 	D3D11_MAPPED_SUBRESOURCE mapped;
 	float buffer[4] = { 0.0, 0.0, 1.0, 1.0 };
+
+	lightAngle += (timeStep);
+	if (lightAngle >= 360)
+		lightAngle = 0;
+
+	//Input
+	InputTransforms(timeStep, viewFrustum);
+	skyPos.r[3] = viewFrustum.viewMatrix.r[3];
+	planePos.r[3] = XMVectorSet(0, 0, 0, 1);
+	teapotPos.r[3] = XMVectorSet(0, 0, 0, 1);
+	pyramidPos.r[3] = XMVectorSet(-2, -.6, -3, 1);
 
 	context->OMSetRenderTargets(1, &renderTarget, depthView);
 	context->RSSetViewports(1, &viewport);
@@ -615,15 +682,33 @@ bool DEMO_APP::Run()
 	context->Unmap(constantBuffer, 0);
 
 	context->Map(dirLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	((DirLight*)mapped.pData)->direction = XMFLOAT4(1, -1, 0, 1);
+	((DirLight*)mapped.pData)->direction = XMFLOAT4(sin(lightAngle), -1, 0, 0);
 	((DirLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
 	context->Unmap(dirLightBuffer, 0);
 
-	//context->Map(pointLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	//((PointLight*)mapped.pData)->pos = viewFrustum.viewMatrix.r[3];
-	//context->Unmap(dirLightBuffer, 0);
+	context->Map(pointLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((PointLight*)mapped.pData)->color = XMFLOAT4(0.1f, 1, 0.1f, 1);
+	((PointLight*)mapped.pData)->pos.x = viewFrustum.viewMatrix.r[3].m128_f32[0];
+	((PointLight*)mapped.pData)->pos.y = viewFrustum.viewMatrix.r[3].m128_f32[1];
+	((PointLight*)mapped.pData)->pos.z = viewFrustum.viewMatrix.r[3].m128_f32[2];
+	((PointLight*)mapped.pData)->pos.w = viewFrustum.viewMatrix.r[3].m128_f32[3];
+	context->Unmap(pointLightBuffer, 0);
+
+	context->Map(spotLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((SpotLight*)mapped.pData)->color = XMFLOAT4(0.1f, 1, 0.1f, 1);
+	((SpotLight*)mapped.pData)->pos.x = 0;
+	((SpotLight*)mapped.pData)->pos.y = 5;
+	((SpotLight*)mapped.pData)->pos.z = 0;
+	((SpotLight*)mapped.pData)->pos.w = 1;
+	((SpotLight*)mapped.pData)->coneDir.x = 0;
+	((SpotLight*)mapped.pData)->coneDir.y = -1;
+	((SpotLight*)mapped.pData)->coneDir.z = 0;
+	((SpotLight*)mapped.pData)->coneDir.w = 1;
+	((SpotLight*)mapped.pData)->coneRatio.x = 0.98f;
+	context->Unmap(spotLightBuffer, 0);
 
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
+
 	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
 
 	//Skybox
@@ -643,23 +728,39 @@ bool DEMO_APP::Run()
 	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1, 0);
 
 	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	((Camera*)mapped.pData)->worldMatrix = XMMatrixIdentity();
+	((Camera*)mapped.pData)->worldMatrix = planePos;
 	((Camera*)mapped.pData)->viewMatrix = invView;
 	((Camera*)mapped.pData)->projMatrix = viewFrustum.projMatrix;
 	context->Unmap(constantBuffer, 0);
 
 	context->Map(dirLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	((DirLight*)mapped.pData)->direction = XMFLOAT4(1, -1, 0, 1);
+	((DirLight*)mapped.pData)->direction = XMFLOAT4(sin(lightAngle), -1, 0, 0);
 	((DirLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
 	context->Unmap(dirLightBuffer, 0);
 
-	//context->Map(pointLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	//((PointLight*)mapped.pData)->pos = viewFrustum.viewMatrix.r[3];
-	//context->Unmap(dirLightBuffer, 0);
+	context->Map(pointLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((PointLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
+	((PointLight*)mapped.pData)->pos.x = viewFrustum.viewMatrix.r[3].m128_f32[0];
+	((PointLight*)mapped.pData)->pos.y = viewFrustum.viewMatrix.r[3].m128_f32[1];
+	((PointLight*)mapped.pData)->pos.z = viewFrustum.viewMatrix.r[3].m128_f32[2];
+	((PointLight*)mapped.pData)->pos.w = viewFrustum.viewMatrix.r[3].m128_f32[3];
+	context->Unmap(pointLightBuffer, 0);
+
+	context->Map(spotLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((SpotLight*)mapped.pData)->color = XMFLOAT4(0.1f, 1, 0.1f, 1);
+	((SpotLight*)mapped.pData)->pos.x = 0;
+	((SpotLight*)mapped.pData)->pos.y = 5;
+	((SpotLight*)mapped.pData)->pos.z = 0;
+	((SpotLight*)mapped.pData)->pos.w = 1;
+	((SpotLight*)mapped.pData)->coneDir.x = 0;
+	((SpotLight*)mapped.pData)->coneDir.y = -1;
+	((SpotLight*)mapped.pData)->coneDir.z = 0;
+	((SpotLight*)mapped.pData)->coneDir.w = 1;
+	((SpotLight*)mapped.pData)->coneRatio.x = 0.98f;
+	context->Unmap(spotLightBuffer, 0);
 
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
 	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
-
 	//Draw Plane (similar to skybox)
 	context->RSSetState(rastPlaneState);
 	context->PSSetShaderResources(0, 1, &planeSRV);
@@ -672,31 +773,46 @@ bool DEMO_APP::Run()
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	context->DrawIndexed(6, 0, 0);
 
-	//Input
-	InputTransforms(timeStep, viewFrustum);
-	skyPos.r[3] = viewFrustum.viewMatrix.r[3];
-	planePos.r[3] = XMVectorSet(0, 0, 0, 1);
+	//Draw Objects
+	//Teapot
 
 	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	((Camera*)mapped.pData)->worldMatrix = XMMatrixIdentity();
+	((Camera*)mapped.pData)->worldMatrix = teapotPos;
 	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, viewFrustum.viewMatrix);
 	((Camera*)mapped.pData)->projMatrix = viewFrustum.projMatrix;
 	context->Unmap(constantBuffer, 0);
 
 	context->Map(dirLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	((DirLight*)mapped.pData)->direction = XMFLOAT4(1, -1, 0, 1);
+	((DirLight*)mapped.pData)->direction = XMFLOAT4(sin(lightAngle), -1, 0, 0);
 	((DirLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
 	context->Unmap(dirLightBuffer, 0);
 
-	//context->Map(pointLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	//((PointLight*)mapped.pData)->pos = viewFrustum.viewMatrix.r[3];
-	//context->Unmap(dirLightBuffer, 0);
+	context->Map(pointLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((PointLight*)mapped.pData)->color = XMFLOAT4(1, 1, 0.1f, 1);
+	((PointLight*)mapped.pData)->pos.x = viewFrustum.viewMatrix.r[3].m128_f32[0];
+	((PointLight*)mapped.pData)->pos.y = viewFrustum.viewMatrix.r[3].m128_f32[1];
+	((PointLight*)mapped.pData)->pos.z = viewFrustum.viewMatrix.r[3].m128_f32[2];
+	((PointLight*)mapped.pData)->pos.w = viewFrustum.viewMatrix.r[3].m128_f32[3];
+	context->Unmap(pointLightBuffer, 0);
+
+	context->Map(spotLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((SpotLight*)mapped.pData)->color = XMFLOAT4(0.1f, 1, 0.1f, 1);
+	((SpotLight*)mapped.pData)->pos.x = 0;
+	((SpotLight*)mapped.pData)->pos.y = 5;
+	((SpotLight*)mapped.pData)->pos.z = 0;
+	((SpotLight*)mapped.pData)->pos.w = 1;
+	((SpotLight*)mapped.pData)->coneDir.x = 1;
+	((SpotLight*)mapped.pData)->coneDir.y = -1;
+	((SpotLight*)mapped.pData)->coneDir.z = 0;
+	((SpotLight*)mapped.pData)->coneDir.w = 1;
+	((SpotLight*)mapped.pData)->coneRatio.x = 0.98f;
+	context->Unmap(spotLightBuffer, 0);
 
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
 	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
-
-	//Draw Objects
-	//Teapot
+	context->PSSetConstantBuffers(1, 1, &pointLightBuffer);
+	context->PSSetConstantBuffers(2, 1, &spotLightBuffer);
+	
 	unsigned int obj = sizeof(_OBJ_VERT_);
 	context->IASetVertexBuffers(0, 1, &TeaBuffer, &obj, &aef);
 	context->PSSetShaderResources(0, 1, &teapotSRV);
@@ -708,7 +824,35 @@ bool DEMO_APP::Run()
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	context->DrawIndexed(4632, 0, 0);
 
+	//pyramid
+	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((Camera*)mapped.pData)->worldMatrix = pyramidPos;
+	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, viewFrustum.viewMatrix);
+	((Camera*)mapped.pData)->projMatrix = viewFrustum.projMatrix;
+	context->Unmap(constantBuffer, 0);
+
+	context->IASetVertexBuffers(0, 1, &PyrBuffer, &obj, &aef);
+	context->PSSetShaderResources(0, 1, &pyramidSRV);
+	context->PSSetSamplers(0, 1, &samplePlaneState);
+	context->IASetIndexBuffer(PyrIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
+	context->VSSetShader(modelVertexShader, 0, 0);
+	context->PSSetShader(modelPixelShader, 0, 0);
+	context->IASetInputLayout(modelLayout);
+	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	context->DrawIndexed(1674, 0, 0);
+
+	unsigned int sef = sizeof(DirLight);
+	context->IASetVertexBuffers(0, 1, &geomBuffer, &sef, &aef);
+	context->GSSetShader(geomGsShader, 0, 0);
+	context->VSSetShader(geomVsShader, 0, 0);
+	context->PSSetShader(geomPsShader, 0, 0);
+	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
+	context->IASetInputLayout(depthlayout);
+	context->Draw(1, 0);
+
 	swapChain->Present(0, 0);
+
+	context->ClearState();
 
 	return true;
 }
@@ -790,6 +934,7 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(constantBuffer);
 	SAFE_RELEASE(dirLightBuffer);
 	SAFE_RELEASE(pointLightBuffer);
+	SAFE_RELEASE(spotLightBuffer);
 	SAFE_RELEASE(cubeBuffer);
 	SAFE_RELEASE(cubeIndexBuffer);
 	SAFE_RELEASE(skyBoxSRV);
@@ -799,6 +944,9 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(TeaBuffer);
 	SAFE_RELEASE(TeaIndexBuffer);
 	SAFE_RELEASE(teapotSRV);
+	SAFE_RELEASE(PyrBuffer);
+	SAFE_RELEASE(PyrIndexBuffer);
+	SAFE_RELEASE(pyramidSRV);
 	SAFE_RELEASE(rastPlaneState);
 	SAFE_RELEASE(sampleState);
 	SAFE_RELEASE(samplePlaneState);
@@ -823,6 +971,11 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(modelPixelShader);
 	SAFE_RELEASE(planeVsShader);
 	SAFE_RELEASE(planePsShader);
+	SAFE_RELEASE(geomBuffer);
+	SAFE_RELEASE(geomGsShader);
+	SAFE_RELEASE(geomVsShader);
+	SAFE_RELEASE(geomPsShader);
+
 
 	UnregisterClass(L"DirectXApplication", application);
 	return true;
