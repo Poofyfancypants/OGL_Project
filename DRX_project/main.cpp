@@ -1,6 +1,7 @@
 #include <iostream>
 #include <ctime>
 #include "XTime.h"
+#include <thread>
 
 #include <d3d11.h>
 #pragma comment (lib, "d3d11.lib")
@@ -17,6 +18,7 @@
 #include "Geometry_GS.csh"
 #include "Geometry_VS.csh"
 #include "Geometry_PS.csh"
+#include "Instanced_VS.csh"
 #include "DDSTextureLoader.h"
 
 #include "assets\teapot.h"
@@ -32,6 +34,12 @@ using namespace DirectX;
 struct Camera
 {
 	XMMATRIX worldMatrix;
+	XMMATRIX viewMatrix;
+	XMMATRIX projMatrix;
+};
+
+struct Viewport
+{
 	XMMATRIX viewMatrix;
 	XMMATRIX projMatrix;
 };
@@ -67,6 +75,19 @@ struct ObjVert
 	XMFLOAT3 pos;
 	XMFLOAT3 uvw;
 	XMFLOAT3 nrm;
+};
+
+struct GeomVert
+{
+	XMFLOAT4 pos;
+	XMFLOAT4 color;
+	XMMATRIX rotation;
+};
+
+struct Instance
+{
+	UINT id;
+	XMFLOAT4 pos;
 };
 
 void InputTransforms(float timeStep, Camera &viewFrustum);
@@ -113,9 +134,15 @@ class DEMO_APP
 	ID3D11VertexShader *vertShader;
 	ID3D11PixelShader *pixelShader;
 
+	//Render to Texture for post processing
+	ID3D11Texture2D *renderTexture = NULL; //Post process / render to texture
+	ID3D11ShaderResourceView *postSRV;
+
+	ID3D11Buffer *postBuffer;
 
 	//Geometry Shader
-	ID3D11Buffer *geomBuffer;
+	ID3D11Buffer *geomBuffer; //THISSSS
+	ID3D11Buffer *geomIndexBuffer; //NOT THISSS
 	ID3D11GeometryShader *geomGsShader;
 	ID3D11VertexShader *geomVsShader;
 	ID3D11PixelShader *geomPsShader;
@@ -140,6 +167,9 @@ class DEMO_APP
 	ID3D11Buffer *PyrBuffer;
 	ID3D11Buffer *PyrIndexBuffer;
 
+	ID3D11Buffer *InstanceBuffer;
+	ID3D11VertexShader *InstancedVertexShader;
+
 	ID3D11ShaderResourceView *pyramidSRV;
 
 	//Generic model setup
@@ -149,8 +179,6 @@ class DEMO_APP
 
 	//Perspective things?
 	Camera viewFrustum;
-
-	Camera seperateFrustum; //
 
 	ID3D11Texture2D *depthStencil = NULL;
 
@@ -165,10 +193,12 @@ public:
 	XMMATRIX skyPos;
 	CubeVert cube[8];
 
+	CubeVert renderRect[4];
+
 	XMMATRIX planePos;
 	CubeVert plane[4];
 
-	PointLight geomVert;
+	GeomVert geomVert[8];
 	//ObjVert Object[8];
 	//XMMATRIX newObject;
 
@@ -304,6 +334,21 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	spotlightbuff_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	spotlightbuff_desc.ByteWidth = sizeof(SpotLight);
 
+	D3D11_TEXTURE2D_DESC render_desc; //Render To Texture / Post process
+	render_desc.Width = BACKBUFFER_WIDTH;
+	render_desc.Height = BACKBUFFER_HEIGHT;
+	render_desc.MipLevels = 0;
+	render_desc.CPUAccessFlags = 0;
+	render_desc.SampleDesc.Count = 1;
+	render_desc.SampleDesc.Quality = 0;
+	render_desc.ArraySize = 8;
+	render_desc.Usage = D3D11_USAGE_DEFAULT;
+	render_desc.BindFlags = D3D11_BIND_RENDER_TARGET | D3D11_BIND_SHADER_RESOURCE;
+	render_desc.Format = DXGI_FORMAT_R8G8B8A8_UNORM_SRGB;
+	render_desc.MiscFlags = D3D11_RESOURCE_MISC_GENERATE_MIPS;
+
+	HRESULT h = device->CreateTexture2D(&render_desc, NULL, &renderTexture);
+
 	D3D11_TEXTURE2D_DESC depth_desc;
 
 	depth_desc.Width = BACKBUFFER_WIDTH;
@@ -317,7 +362,7 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	depth_desc.BindFlags = D3D11_BIND_DEPTH_STENCIL;
 	depth_desc.CPUAccessFlags = 0;
 	depth_desc.MiscFlags = 0;
-	HRESULT h = device->CreateTexture2D(&depth_desc, NULL, &depthStencil);
+	h = device->CreateTexture2D(&depth_desc, NULL, &depthStencil);
 
 	D3D11_DEPTH_STENCIL_VIEW_DESC depthS_desc;
 	ZeroMemory(&depthS_desc, sizeof(depthS_desc));
@@ -325,6 +370,23 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	depthS_desc.ViewDimension = D3D11_DSV_DIMENSION_TEXTURE2DMS;
 	depthS_desc.Texture2D.MipSlice = 0;
 	HRESULT d = device->CreateDepthStencilView(depthStencil, &depthS_desc, &depthView);
+
+	renderRect[0].position = XMFLOAT4(-.5f, -.5f, 0, 1);
+	renderRect[1].position = XMFLOAT4(-.5f, .5f, 0, 1);
+	renderRect[2].position = XMFLOAT4(.5f, -.5f, 0, 1);
+	renderRect[3].position = XMFLOAT4(.5f, .5f, 0, 1);
+
+	renderRect[0].uvw = XMFLOAT3(0, 1, 1);
+	renderRect[1].uvw = XMFLOAT3(0, 0, 1);
+	renderRect[2].uvw = XMFLOAT3(1, 1, 1);
+	renderRect[3].uvw = XMFLOAT3(1, 0, 1);
+
+	for (unsigned int i = 0; i < 8; i++)
+	{
+		geomVert[i].pos = { 1, 0, 10, 0 };
+		geomVert[i].color = { 1, 0.1f, 1, 1 };
+		geomVert[i].rotation = XMMatrixIdentity();
+	}
 
 	D3D11_SUBRESOURCE_DATA geomData;
 	ZeroMemory(&geomData, sizeof(geomData));
@@ -368,6 +430,7 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	Vs = device->CreateVertexShader(Texture_VS, sizeof(Texture_VS), NULL, &planeVsShader); //For skybox
 	Vs = device->CreateVertexShader(Geometry_VS, sizeof(Geometry_VS), NULL, &geomVsShader);
 	Ps = device->CreatePixelShader(Geometry_PS, sizeof(Geometry_PS), NULL, &geomPsShader);
+	Vs = device->CreateVertexShader(Instanced_VS, sizeof(Instanced_VS), NULL, &InstancedVertexShader);
 
 	D3D11_RASTERIZER_DESC rast_desc; //sky
 	ZeroMemory(&rast_desc, sizeof(rast_desc));
@@ -423,10 +486,14 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 
 	HRESULT sP = device->CreateSamplerState(&sample_plane_desc, &samplePlaneState);
 
+	//std::thread thread;
+
 	HRESULT Sr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/Skybox/Skybox.dds", NULL, &skyBoxSRV);
 	Sr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/platform_seamless.dds", NULL, &planeSRV);
 	Sr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/BrassTile_seamless.dds", NULL, &teapotSRV);
 	Sr = CreateDDSTextureFromFile(device, L"../DRX_project/assets/sand_seamless.dds", NULL, &pyramidSRV);
+
+	//thread.join();
 
 	//HRESULT oSr = CreateDDSTextureFromFile(device, L"", NULL, &objectSRV); 
 
@@ -453,9 +520,6 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	planePos = XMMatrixIdentity();
 	teapotPos = XMMatrixIdentity();
 	pyramidPos = XMMatrixIdentity();
-
-	geomVert.pos = { 5, 5, 5, 0 };
-	geomVert.color = { 1, 1, 1, 1 };
 
 	lightAngle = 0.0f;
 
@@ -533,6 +597,7 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	HRESULT lc = device->CreateBuffer(&cube_desc, &cube_data, &cubeBuffer);
 
 	UINT32 cubeIndices[] = { 0, 2, 1, 1, 2, 3, 1, 3, 7, 7, 5, 1, 2, 0, 4, 4, 6, 2, 4, 5, 6, 5, 7, 6, 2, 7, 3, 6, 7, 2, 0, 1, 5, 5, 4, 0 };
+	UINT32 geomIndices[] = { 0, 2, 1, 1, 2, 3, 1, 3, 7, 7, 5, 1, 2, 0, 4, 4, 6, 2, 4, 5, 6, 5, 7, 6, 2, 7, 3, 6, 7, 2, 0, 1, 5, 5, 4, 0 };
 
 	D3D11_BUFFER_DESC cube_index_desc;
 	ZeroMemory(&cube_index_desc, sizeof(cube_index_desc));
@@ -545,6 +610,18 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	ZeroMemory(&cube_index_data, sizeof(cube_index_data));
 	cube_index_data.pSysMem = cubeIndices;
 	HRESULT f = device->CreateBuffer(&cube_index_desc, &cube_index_data, &cubeIndexBuffer);
+
+	D3D11_BUFFER_DESC geom_index_desc;
+	ZeroMemory(&geom_index_desc, sizeof(geom_index_desc));
+	geom_index_desc.Usage = D3D11_USAGE_IMMUTABLE;
+	geom_index_desc.BindFlags = D3D11_BIND_INDEX_BUFFER;
+	geom_index_desc.CPUAccessFlags = NULL;
+	geom_index_desc.ByteWidth = sizeof(PointLight) * 8;
+
+	D3D11_SUBRESOURCE_DATA geom_index_data;
+	ZeroMemory(&geom_index_data, sizeof(geom_index_data));
+	geom_index_data.pSysMem = geomIndices;
+	f = device->CreateBuffer(&geom_index_desc, &geom_index_data, &geomIndexBuffer);
 
 	D3D11_BUFFER_DESC plane_desc;
 	ZeroMemory(&plane_desc, sizeof(plane_desc));
@@ -653,7 +730,7 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 bool DEMO_APP::Run()
 {
 	timer.Signal();
-	float timeStep = timer.Delta();
+	float timeStep = (float)timer.Delta();
 	D3D11_MAPPED_SUBRESOURCE mapped;
 	float buffer[4] = { 0.0, 0.0, 1.0, 1.0 };
 
@@ -666,7 +743,7 @@ bool DEMO_APP::Run()
 	skyPos.r[3] = viewFrustum.viewMatrix.r[3];
 	planePos.r[3] = XMVectorSet(0, 0, 0, 1);
 	teapotPos.r[3] = XMVectorSet(0, 0, 0, 1);
-	pyramidPos.r[3] = XMVectorSet(-2, -.6, -3, 1);
+	pyramidPos.r[3] = XMVectorSet(-2, -.6f, -3, 1);
 
 	context->OMSetRenderTargets(1, &renderTarget, depthView);
 	context->RSSetViewports(1, &viewport);
@@ -769,7 +846,7 @@ bool DEMO_APP::Run()
 	context->IASetIndexBuffer(planeIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 	context->VSSetShader(planeVsShader, 0, 0);
 	context->PSSetShader(planePsShader, 0, 0);
-	context->IASetInputLayout(uvlayout);
+	context->IASetInputLayout(uvlayout); //Introduce nrm
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	context->DrawIndexed(6, 0, 0);
 
@@ -812,7 +889,7 @@ bool DEMO_APP::Run()
 	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
 	context->PSSetConstantBuffers(1, 1, &pointLightBuffer);
 	context->PSSetConstantBuffers(2, 1, &spotLightBuffer);
-	
+
 	unsigned int obj = sizeof(_OBJ_VERT_);
 	context->IASetVertexBuffers(0, 1, &TeaBuffer, &obj, &aef);
 	context->PSSetShaderResources(0, 1, &teapotSRV);
@@ -824,6 +901,11 @@ bool DEMO_APP::Run()
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	context->DrawIndexed(4632, 0, 0);
 
+	context->VSSetConstantBuffers(0, 1, &constantBuffer);
+	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
+	context->PSSetConstantBuffers(1, 1, &pointLightBuffer);
+	context->PSSetConstantBuffers(2, 1, &spotLightBuffer);
+
 	//pyramid
 	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
 	((Camera*)mapped.pData)->worldMatrix = pyramidPos;
@@ -832,15 +914,17 @@ bool DEMO_APP::Run()
 	context->Unmap(constantBuffer, 0);
 
 	context->IASetVertexBuffers(0, 1, &PyrBuffer, &obj, &aef);
+	context->IASetVertexBuffers(1, 1, &InstanceBuffer, &obj, &aef); //What goes to the shader?
 	context->PSSetShaderResources(0, 1, &pyramidSRV);
 	context->PSSetSamplers(0, 1, &samplePlaneState);
 	context->IASetIndexBuffer(PyrIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
-	context->VSSetShader(modelVertexShader, 0, 0);
+	context->VSSetShader(InstancedVertexShader, 0, 0);
 	context->PSSetShader(modelPixelShader, 0, 0);
 	context->IASetInputLayout(modelLayout);
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	context->DrawIndexed(1674, 0, 0);
+	context->DrawIndexedInstanced(1674, 8, 0, 0, 0);
 
+	//Blue corner, so great
 	unsigned int sef = sizeof(DirLight);
 	context->IASetVertexBuffers(0, 1, &geomBuffer, &sef, &aef);
 	context->GSSetShader(geomGsShader, 0, 0);
@@ -849,6 +933,11 @@ bool DEMO_APP::Run()
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
 	context->IASetInputLayout(depthlayout);
 	context->Draw(1, 0);
+	//context->DrawInstanced(2, 8, 0, 0); 
+
+
+	//Draw a quad with the post process renderTexture aas the shader resource view
+	//Then use the quad's pixel shaders for whatever
 
 	swapChain->Present(0, 0);
 
@@ -864,7 +953,7 @@ void InputTransforms(float timeStep, Camera &viewFrustum)
 		XMMATRIX translation = XMMatrixTranslation(0, 0, 5 * timeStep);
 		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
 	}
-	if (GetAsyncKeyState('Q') & 0x8000)
+	if (GetAsyncKeyState('A') & 0x8000)
 	{
 		XMMATRIX translation = XMMatrixTranslation(-5 * timeStep, 0, 0);
 		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
@@ -874,23 +963,23 @@ void InputTransforms(float timeStep, Camera &viewFrustum)
 		XMMATRIX translation = XMMatrixTranslation(0, 0, -5 * timeStep);
 		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
 	}
-	if (GetAsyncKeyState('E') & 0x8000)
+	if (GetAsyncKeyState('D') & 0x8000)
 	{
 		XMMATRIX translation = XMMatrixTranslation(5 * timeStep, 0, 0);
 		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
 	}
-	if (GetAsyncKeyState('T') & 0x8000)
+	if (GetAsyncKeyState(VK_LSHIFT) & 0x8000)
 	{
 		XMMATRIX translation = XMMatrixTranslation(0, -5 * timeStep, 0);
 		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
 	}
-	if (GetAsyncKeyState('Y') & 0x8000)
+	if (GetAsyncKeyState(VK_SPACE) & 0x8000)
 	{
 		XMMATRIX translation = XMMatrixTranslation(0, 5 * timeStep, 0);
 		viewFrustum.viewMatrix = XMMatrixMultiply(translation, viewFrustum.viewMatrix);
 	}
 
-	if (GetAsyncKeyState('D') & 0x8000)
+	if (GetAsyncKeyState('E') & 0x8000)
 	{
 		XMMATRIX rotateTemp = XMMatrixIdentity();
 		rotateTemp.r[3] = viewFrustum.viewMatrix.r[3];
@@ -898,7 +987,7 @@ void InputTransforms(float timeStep, Camera &viewFrustum)
 		viewFrustum.viewMatrix = XMMatrixMultiply(viewFrustum.viewMatrix, XMMatrixRotationY(timeStep));
 		viewFrustum.viewMatrix.r[3] = rotateTemp.r[3];
 	}
-	if (GetAsyncKeyState('A') & 0x8000)
+	if (GetAsyncKeyState('Q') & 0x8000)
 	{
 		XMMATRIX rotateTemp = XMMatrixIdentity();
 		rotateTemp.r[3] = viewFrustum.viewMatrix.r[3];
@@ -935,6 +1024,8 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(dirLightBuffer);
 	SAFE_RELEASE(pointLightBuffer);
 	SAFE_RELEASE(spotLightBuffer);
+	SAFE_RELEASE(postBuffer);
+	SAFE_RELEASE(postSRV);
 	SAFE_RELEASE(cubeBuffer);
 	SAFE_RELEASE(cubeIndexBuffer);
 	SAFE_RELEASE(skyBoxSRV);
@@ -963,6 +1054,7 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(depthView);
 	SAFE_RELEASE(depthStencil);
 	SAFE_RELEASE(rastState);
+	SAFE_RELEASE(renderTexture);
 
 	SAFE_RELEASE(depthShader);
 	SAFE_RELEASE(vertShader);
@@ -972,10 +1064,12 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(planeVsShader);
 	SAFE_RELEASE(planePsShader);
 	SAFE_RELEASE(geomBuffer);
+	SAFE_RELEASE(geomIndexBuffer);
 	SAFE_RELEASE(geomGsShader);
 	SAFE_RELEASE(geomVsShader);
 	SAFE_RELEASE(geomPsShader);
-
+	SAFE_RELEASE(InstancedVertexShader);
+	SAFE_RELEASE(InstanceBuffer);
 
 	UnregisterClass(L"DirectXApplication", application);
 	return true;
