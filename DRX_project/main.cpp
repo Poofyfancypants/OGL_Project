@@ -29,17 +29,15 @@ using namespace DirectX;
 
 #define BACKBUFFER_WIDTH	1024
 #define BACKBUFFER_HEIGHT	768
+
+#define VIEWPORT_BUFFER_WIDTH	256
+#define VIEWPORT_BUFFER_HEIGHT	256
+
 #define SAFE_RELEASE(p) {if(p){p->Release(); p = NULL;}}
 
 struct Camera
 {
 	XMMATRIX worldMatrix;
-	XMMATRIX viewMatrix;
-	XMMATRIX projMatrix;
-};
-
-struct Viewport
-{
 	XMMATRIX viewMatrix;
 	XMMATRIX projMatrix;
 };
@@ -90,7 +88,7 @@ struct Instance
 };
 
 void InputTransforms(float timeStep, Camera &viewFrustum);
-
+void DrawStuff();
 //threaded load function
 void LoadThreaded(ID3D11Device* d, ID3D11ShaderResourceView **s);
 
@@ -109,9 +107,11 @@ class DEMO_APP
 
 	IDXGISwapChain *swapChain;
 	D3D11_VIEWPORT viewport;
+	D3D11_VIEWPORT secondView;
 
 	ID3D11Resource * pBB;
 	ID3D11Buffer *constantBuffer;
+	ID3D11Buffer *viewBuffer;
 
 	//Lighting
 	ID3D11Buffer *dirLightBuffer;
@@ -175,6 +175,12 @@ class DEMO_APP
 	ID3D11InputLayout *InstanceLayout;
 	ID3D11ShaderResourceView *pyramidSRV;
 
+	//Tessalation for pyramid
+	ID3D11HullShader *HullShader;
+	ID3D11DomainShader *DomainShader;
+
+	ID3D11Buffer *ControlBuffer;
+
 	//Generic model setup
 	ID3D11InputLayout *modelLayout;
 	ID3D11VertexShader *modelVertexShader; //Model
@@ -182,6 +188,7 @@ class DEMO_APP
 
 	//Perspective things?
 	Camera viewFrustum;
+	Camera newFrustum;
 
 	ID3D11Texture2D *depthStencil = NULL;
 
@@ -190,6 +197,7 @@ class DEMO_APP
 	ID3D11RasterizerState *rastPlaneState;
 	ID3D11SamplerState *sampleState;
 	ID3D11SamplerState *samplePlaneState;
+	ID3D11BlendState *blendState;
 
 public:
 
@@ -307,12 +315,28 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	viewport.Width = BACKBUFFER_WIDTH;
 	viewport.Height = BACKBUFFER_HEIGHT;
 
+	secondView.MinDepth = 0;
+	secondView.MaxDepth = 1;
+	secondView.TopLeftX = (BACKBUFFER_WIDTH - VIEWPORT_BUFFER_WIDTH);
+	secondView.TopLeftY = (0);
+	secondView.Width = VIEWPORT_BUFFER_WIDTH;
+	secondView.Height = VIEWPORT_BUFFER_HEIGHT;
+
 	D3D11_BUFFER_DESC constbuff_desc;
 	ZeroMemory(&constbuff_desc, sizeof(constbuff_desc));
 	constbuff_desc.Usage = D3D11_USAGE_DYNAMIC;
 	constbuff_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
 	constbuff_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
 	constbuff_desc.ByteWidth = sizeof(Camera);
+
+	D3D11_BUFFER_DESC view_desc;
+	ZeroMemory(&view_desc, sizeof(view_desc));
+	view_desc.Usage = D3D11_USAGE_DYNAMIC;
+	view_desc.BindFlags = D3D11_BIND_CONSTANT_BUFFER;
+	view_desc.CPUAccessFlags = D3D11_CPU_ACCESS_WRITE;
+	view_desc.ByteWidth = sizeof(Camera);
+
+	
 
 	D3D11_BUFFER_DESC geombuff_desc;
 	ZeroMemory(&geombuff_desc, sizeof(geombuff_desc));
@@ -396,7 +420,6 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	depthS_desc.Texture2D.MipSlice = 0;
 	HRESULT d = device->CreateDepthStencilView(depthStencil, &depthS_desc, &depthView);
 
-
 	for (unsigned int i = 0; i < 8; i++)
 	{
 		geomVert[i].pos = { 1, 0, 10, 0 };
@@ -409,10 +432,6 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	geomData.pSysMem = &geomVert;
 	d = device->CreateBuffer(&geombuff_desc, &geomData, &geomBuffer);
 
-	D3D11_SUBRESOURCE_DATA bufferData;
-	ZeroMemory(&bufferData, sizeof(bufferData));
-	bufferData.pSysMem = &viewFrustum;
-	HRESULT c = device->CreateBuffer(&constbuff_desc, &bufferData, &constantBuffer);
 
 	Instance instanced[8];
 	for (int i = 0; i < 8; i++)
@@ -456,6 +475,20 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	Vs = device->CreateVertexShader(Geometry_VS, sizeof(Geometry_VS), NULL, &geomVsShader);
 	Ps = device->CreatePixelShader(Geometry_PS, sizeof(Geometry_PS), NULL, &geomPsShader);
 	Vs = device->CreateVertexShader(Instanced_VS, sizeof(Instanced_VS), NULL, &InstancedVertexShader);
+
+	D3D11_BLEND_DESC blend_desc;
+	ZeroMemory(&blend_desc, sizeof(blend_desc));
+	blend_desc.AlphaToCoverageEnable = false;
+	blend_desc.IndependentBlendEnable = false;
+	blend_desc.RenderTarget->BlendEnable = true;
+	blend_desc.RenderTarget->SrcBlend = D3D11_BLEND_SRC_ALPHA;
+	blend_desc.RenderTarget->DestBlend = D3D11_BLEND_ONE;
+	blend_desc.RenderTarget->BlendOp = D3D11_BLEND_OP_ADD;
+	blend_desc.RenderTarget->SrcBlendAlpha = D3D11_BLEND_ZERO;
+	blend_desc.RenderTarget->DestBlendAlpha = D3D11_BLEND_ZERO;
+	blend_desc.RenderTarget->BlendOpAlpha = D3D11_BLEND_OP_ADD;
+	blend_desc.RenderTarget->RenderTargetWriteMask = D3D11_COLOR_WRITE_ENABLE_ALL;
+	HRESULT b = device->CreateBlendState(&blend_desc, &blendState);
 
 	D3D11_RASTERIZER_DESC rast_desc; //sky
 	ZeroMemory(&rast_desc, sizeof(rast_desc));
@@ -717,7 +750,7 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	D3D11_SUBRESOURCE_DATA tea_index_data;
 	ZeroMemory(&tea_index_data, sizeof(tea_index_data));
 	tea_index_data.pSysMem = teapot_indicies;
-	HRESULT b = device->CreateBuffer(&tea_index_desc, &tea_index_data, &TeaIndexBuffer);
+	HRESULT t = device->CreateBuffer(&tea_index_desc, &tea_index_data, &TeaIndexBuffer);
 
 	D3D11_BUFFER_DESC pyr_index_desc;
 	ZeroMemory(&pyr_index_desc, sizeof(pyr_index_desc));
@@ -730,7 +763,6 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	ZeroMemory(&pyr_index_data, sizeof(pyr_index_data));
 	pyr_index_data.pSysMem = test_pyramid_indicies;
 	b = device->CreateBuffer(&pyr_index_desc, &pyr_index_data, &PyrIndexBuffer);
-
 
 	viewFrustum.worldMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
 	viewFrustum.viewMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 5, -10, 1 };
@@ -756,6 +788,39 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	viewFrustum.projMatrix.r[3].m128_f32[3] = 0;
 
 	viewFrustum.projMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(75), ((float)BACKBUFFER_WIDTH / (float)BACKBUFFER_HEIGHT), 0.1f, 100.0f);
+
+	D3D11_SUBRESOURCE_DATA bufferData;
+	ZeroMemory(&bufferData, sizeof(bufferData));
+	bufferData.pSysMem = &viewFrustum;
+	HRESULT c = device->CreateBuffer(&constbuff_desc, &bufferData, &constantBuffer);
+
+	newFrustum.viewMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 10, -20, 1 };
+	yScale = (1 / (tan(0.5f*1.57f)));
+	xScale = (yScale * ((float)VIEWPORT_BUFFER_WIDTH / (float)VIEWPORT_BUFFER_HEIGHT));
+
+	newFrustum.projMatrix.r[0].m128_f32[0] = xScale;
+	newFrustum.projMatrix.r[0].m128_f32[1] = 0;
+	newFrustum.projMatrix.r[0].m128_f32[2] = 0;
+	newFrustum.projMatrix.r[0].m128_f32[3] = 0;
+	newFrustum.projMatrix.r[1].m128_f32[0] = 0;
+	newFrustum.projMatrix.r[1].m128_f32[1] = yScale;
+	newFrustum.projMatrix.r[1].m128_f32[2] = 0;
+	newFrustum.projMatrix.r[1].m128_f32[3] = 0;
+	newFrustum.projMatrix.r[2].m128_f32[0] = 0;
+	newFrustum.projMatrix.r[2].m128_f32[1] = 0;
+	newFrustum.projMatrix.r[2].m128_f32[2] = (100.0f / (100.0f - 0.1f));
+	newFrustum.projMatrix.r[2].m128_f32[3] = 1;
+	newFrustum.projMatrix.r[3].m128_f32[0] = 0;
+	newFrustum.projMatrix.r[3].m128_f32[1] = 0;
+	newFrustum.projMatrix.r[3].m128_f32[2] = (-(100.0f*0.1f) / (100.0f - .1f));
+	newFrustum.projMatrix.r[3].m128_f32[3] = 0;
+
+	newFrustum.projMatrix = XMMatrixPerspectiveFovLH(XMConvertToRadians(75), ((float)VIEWPORT_BUFFER_WIDTH / (float)VIEWPORT_BUFFER_HEIGHT), 0.1f, 100.0f);
+
+	D3D11_SUBRESOURCE_DATA viewData;
+	ZeroMemory(&viewData, sizeof(viewData));
+	viewData.pSysMem = &newFrustum;
+	c = device->CreateBuffer(&view_desc, &viewData, &viewBuffer);
 }
 
 bool DEMO_APP::Run()
@@ -764,6 +829,7 @@ bool DEMO_APP::Run()
 	float timeStep = (float)timer.Delta();
 	D3D11_MAPPED_SUBRESOURCE mapped;
 	float buffer[4] = { 0.0, 0.0, 1.0, 1.0 };
+	float blend[4] = { 0.5f, 0.5f, 0.5f, 1 };
 
 	lightAngle += (timeStep);
 	if (lightAngle >= 360)
@@ -773,8 +839,8 @@ bool DEMO_APP::Run()
 	InputTransforms(timeStep, viewFrustum);
 	skyPos.r[3] = viewFrustum.viewMatrix.r[3];
 	planePos.r[3] = XMVectorSet(0, 0, 0, 1);
-	teapotPos.r[3] = XMVectorSet(0, 0, 0, 1);
-	pyramidPos.r[3] = XMVectorSet(-2, -.6f, -3, 1);
+	teapotPos.r[3] = XMVectorSet(0, 0, 5, 1);
+	pyramidPos.r[3] = XMVectorSet(-6, -.6f, -3, 1);
 
 	context->OMSetRenderTargets(1, &renderTarget, depthView);
 	context->RSSetViewports(1, &viewport);
@@ -803,7 +869,7 @@ bool DEMO_APP::Run()
 	context->Unmap(pointLightBuffer, 0);
 
 	context->Map(spotLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	((SpotLight*)mapped.pData)->color = XMFLOAT4(0.1f, 1, 0.1f, 1);
+	((SpotLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
 	((SpotLight*)mapped.pData)->pos.x = 0;
 	((SpotLight*)mapped.pData)->pos.y = 5;
 	((SpotLight*)mapped.pData)->pos.z = 0;
@@ -816,7 +882,7 @@ bool DEMO_APP::Run()
 	context->Unmap(spotLightBuffer, 0);
 
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
-	//context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
+	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
 
 	//Skybox
 	unsigned int aef = 0;
@@ -831,6 +897,18 @@ bool DEMO_APP::Run()
 	context->IASetInputLayout(uvlayout);
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	context->DrawIndexed(36, 0, 0);
+
+	context->RSSetViewports(1, &secondView);
+	context->VSSetConstantBuffers(0, 1, &viewBuffer);
+
+	context->Map(viewBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((Camera*)mapped.pData)->worldMatrix = skyPos;
+	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, newFrustum.viewMatrix);
+	((Camera*)mapped.pData)->projMatrix = newFrustum.projMatrix;
+	context->Unmap(viewBuffer, 0);
+
+	context->DrawIndexed(36, 0, 0);
+	context->RSSetViewports(1, &viewport);
 
 	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1, 0);
 
@@ -854,7 +932,7 @@ bool DEMO_APP::Run()
 	context->Unmap(pointLightBuffer, 0);
 
 	context->Map(spotLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	((SpotLight*)mapped.pData)->color = XMFLOAT4(0.1f, 1, 0.1f, 1);
+	((SpotLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
 	((SpotLight*)mapped.pData)->pos.x = 0;
 	((SpotLight*)mapped.pData)->pos.y = 5;
 	((SpotLight*)mapped.pData)->pos.z = 0;
@@ -868,6 +946,8 @@ bool DEMO_APP::Run()
 
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
 	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
+	context->PSSetConstantBuffers(1, 1, &pointLightBuffer);
+	context->PSSetConstantBuffers(2, 1, &spotLightBuffer);
 
 	//Draw Plane (similar to skybox)
 	context->RSSetState(rastPlaneState);
@@ -880,8 +960,21 @@ bool DEMO_APP::Run()
 	context->IASetInputLayout(uvlayout); //Introduce nrm
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	context->DrawIndexed(6, 0, 0);
+	context->RSSetViewports(1, &secondView);
+	context->VSSetConstantBuffers(0, 1, &viewBuffer);
+
+	context->Map(viewBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((Camera*)mapped.pData)->worldMatrix = planePos;
+	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, newFrustum.viewMatrix);
+	((Camera*)mapped.pData)->projMatrix = newFrustum.projMatrix;
+	context->Unmap(viewBuffer, 0);
+
+	context->DrawIndexed(6, 0, 0);
+	context->RSSetViewports(1, &viewport);
 
 	//Draw Objects
+	unsigned int obj = sizeof(_OBJ_VERT_);
+
 	//Teapot
 
 	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
@@ -904,14 +997,14 @@ bool DEMO_APP::Run()
 	context->Unmap(pointLightBuffer, 0);
 
 	context->Map(spotLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	((SpotLight*)mapped.pData)->color = XMFLOAT4(0.1f, 1, 0.1f, 1);
-	((SpotLight*)mapped.pData)->pos.x = 0;
+	((SpotLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
+	((SpotLight*)mapped.pData)->pos.x = sin(lightAngle);
 	((SpotLight*)mapped.pData)->pos.y = 5;
 	((SpotLight*)mapped.pData)->pos.z = 0;
 	((SpotLight*)mapped.pData)->pos.w = 1;
 	((SpotLight*)mapped.pData)->coneDir.x = 0;
 	((SpotLight*)mapped.pData)->coneDir.y = -1;
-	((SpotLight*)mapped.pData)->coneDir.z = 0;
+	((SpotLight*)mapped.pData)->coneDir.z = sin(lightAngle);
 	((SpotLight*)mapped.pData)->coneDir.w = 1;
 	((SpotLight*)mapped.pData)->coneRatio.x = 0.98f;
 	context->Unmap(spotLightBuffer, 0);
@@ -920,8 +1013,8 @@ bool DEMO_APP::Run()
 	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
 	context->PSSetConstantBuffers(1, 1, &pointLightBuffer);
 	context->PSSetConstantBuffers(2, 1, &spotLightBuffer);
+	context->OMSetBlendState(nullptr, blend, 0xFFFFFFFF);
 
-	unsigned int obj = sizeof(_OBJ_VERT_);
 	context->IASetVertexBuffers(0, 1, &TeaBuffer, &obj, &aef);
 	context->PSSetShaderResources(0, 1, &teapotSRV);
 	context->PSSetSamplers(0, 1, &samplePlaneState);
@@ -931,6 +1024,17 @@ bool DEMO_APP::Run()
 	context->IASetInputLayout(modelLayout);
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	context->DrawIndexed(4632, 0, 0);
+	context->RSSetViewports(1, &secondView);
+	context->VSSetConstantBuffers(0, 1, &viewBuffer);
+
+	context->Map(viewBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((Camera*)mapped.pData)->worldMatrix = teapotPos;
+	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, newFrustum.viewMatrix);
+	((Camera*)mapped.pData)->projMatrix = newFrustum.projMatrix;
+	context->Unmap(viewBuffer, 0);
+
+	context->DrawIndexed(4632, 0, 0);
+	context->RSSetViewports(1, &viewport);
 
 	//pyramid
 	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
@@ -953,27 +1057,27 @@ bool DEMO_APP::Run()
 	context->Unmap(pointLightBuffer, 0);
 
 	context->Map(spotLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	((SpotLight*)mapped.pData)->color = XMFLOAT4(0.1f, 1, 0.1f, 1);
-	((SpotLight*)mapped.pData)->pos.x = 0;
+	((SpotLight*)mapped.pData)->color = XMFLOAT4(1, 1, 1, 1);
+	((SpotLight*)mapped.pData)->pos.x = sin(lightAngle);
 	((SpotLight*)mapped.pData)->pos.y = 5;
 	((SpotLight*)mapped.pData)->pos.z = 0;
 	((SpotLight*)mapped.pData)->pos.w = 1;
-	((SpotLight*)mapped.pData)->coneDir.x = 1;
+	((SpotLight*)mapped.pData)->coneDir.x = 0;
 	((SpotLight*)mapped.pData)->coneDir.y = -1;
-	((SpotLight*)mapped.pData)->coneDir.z = 0;
+	((SpotLight*)mapped.pData)->coneDir.z = sin(lightAngle);
 	((SpotLight*)mapped.pData)->coneDir.w = 1;
 	((SpotLight*)mapped.pData)->coneRatio.x = 0.98f;
 	context->Unmap(spotLightBuffer, 0);
 
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
-	//context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
+	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
 	context->PSSetConstantBuffers(1, 1, &pointLightBuffer);
-	//context->PSSetConstantBuffers(2, 1, &spotLightBuffer);
+	context->PSSetConstantBuffers(2, 1, &spotLightBuffer);
+	context->OMSetBlendState(blendState, blend, 0xFFFFFFFF);
 
-	obj = sizeof(ObjVert);
 	context->IASetVertexBuffers(0, 1, &PyrBuffer, &obj, &aef);
 	obj = sizeof(Instance);
-	context->IASetVertexBuffers(1, 1, &InstanceBuffer, &obj, &aef); //What goes to the shader?
+	context->IASetVertexBuffers(1, 1, &InstanceBuffer, &obj, &aef);
 	context->PSSetShaderResources(0, 1, &pyramidSRV);
 	context->PSSetSamplers(0, 1, &samplePlaneState);
 	context->IASetIndexBuffer(PyrIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
@@ -981,9 +1085,20 @@ bool DEMO_APP::Run()
 	context->PSSetShader(modelPixelShader, 0, 0);
 	context->IASetInputLayout(InstanceLayout);
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
-	context->DrawIndexedInstanced(1674, 8, 0, 0, 0);
+
+	context->DrawIndexedInstanced(1674, 16, 0, 0, 0);
+	context->RSSetViewports(1, &secondView);
+	context->VSSetConstantBuffers(0, 1, &viewBuffer);
+	context->Map(viewBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
+	((Camera*)mapped.pData)->worldMatrix = pyramidPos;
+	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, newFrustum.viewMatrix);
+	((Camera*)mapped.pData)->projMatrix = newFrustum.projMatrix;
+	context->Unmap(viewBuffer, 0);
+	context->DrawIndexedInstanced(1674, 16, 0, 0, 0);
+	context->RSSetViewports(1, &viewport);
 
 	//Blue corner, so great
+	context->OMSetBlendState(blendState, blend, 0xFFFFFFFF);
 	unsigned int sef = sizeof(DirLight);
 	context->IASetVertexBuffers(0, 1, &geomBuffer, &sef, &aef);
 	context->GSSetShader(geomGsShader, 0, 0);
@@ -992,10 +1107,16 @@ bool DEMO_APP::Run()
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
 	context->IASetInputLayout(depthlayout);
 	context->Draw(1, 0);
+	context->RSSetViewports(1, &secondView);
+	context->VSSetConstantBuffers(0, 1, &viewBuffer);
+	context->Draw(1, 0);
+	context->RSSetViewports(1, &viewport);
+
 	//context->DrawInstanced(2, 8, 0, 0); 
 
 	//Draw a quad with the post process renderTexture aas the shader resource view
 	//Then use the quad's pixel shaders for whatever
+
 
 	swapChain->Present(0, 0);
 
@@ -1079,6 +1200,7 @@ void InputTransforms(float timeStep, Camera &viewFrustum)
 bool DEMO_APP::ShutDown()
 {
 	SAFE_RELEASE(constantBuffer);
+	SAFE_RELEASE(viewBuffer);
 	SAFE_RELEASE(dirLightBuffer);
 	SAFE_RELEASE(pointLightBuffer);
 	SAFE_RELEASE(spotLightBuffer);
@@ -1112,6 +1234,7 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(depthView);
 	SAFE_RELEASE(depthStencil);
 	SAFE_RELEASE(rastState);
+	SAFE_RELEASE(blendState);
 	SAFE_RELEASE(renderTexture);
 
 	SAFE_RELEASE(depthShader);
@@ -1130,11 +1253,13 @@ bool DEMO_APP::ShutDown()
 	SAFE_RELEASE(InstanceLayout);
 	SAFE_RELEASE(InstanceBuffer);
 
+	SAFE_RELEASE(HullShader);
+	SAFE_RELEASE(DomainShader);
+	SAFE_RELEASE(ControlBuffer);
+
 	UnregisterClass(L"DirectXApplication", application);
 	return true;
 }
-
-
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, LPTSTR lpCmdLine, int nCmdShow);
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wparam, LPARAM lparam);
