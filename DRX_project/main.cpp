@@ -957,7 +957,7 @@ bool DEMO_APP::Run()
 	context->IASetIndexBuffer(planeIndexBuffer, DXGI_FORMAT_R32_UINT, 0);
 	context->VSSetShader(planeVsShader, 0, 0);
 	context->PSSetShader(planePsShader, 0, 0);
-	context->IASetInputLayout(uvlayout); //Introduce nrm
+	context->IASetInputLayout(uvlayout);
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	context->DrawIndexed(6, 0, 0);
 	context->RSSetViewports(1, &secondView);
@@ -990,9 +990,9 @@ bool DEMO_APP::Run()
 
 	context->Map(pointLightBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
 	((PointLight*)mapped.pData)->color = XMFLOAT4(1, 0.5f, 1, 1);
-	((PointLight*)mapped.pData)->pos.x = 0;
+	((PointLight*)mapped.pData)->pos.x = lightAngle / 2;
 	((PointLight*)mapped.pData)->pos.y = -2;
-	((PointLight*)mapped.pData)->pos.z = 0;
+	((PointLight*)mapped.pData)->pos.z = lightAngle/2;
 	((PointLight*)mapped.pData)->pos.w = 1;
 	context->Unmap(pointLightBuffer, 0);
 
@@ -1008,6 +1008,7 @@ bool DEMO_APP::Run()
 	((SpotLight*)mapped.pData)->coneDir.w = 1;
 	((SpotLight*)mapped.pData)->coneRatio.x = 0.98f;
 	context->Unmap(spotLightBuffer, 0);
+
 
 	context->VSSetConstantBuffers(0, 1, &constantBuffer);
 	context->PSSetConstantBuffers(0, 1, &dirLightBuffer);
