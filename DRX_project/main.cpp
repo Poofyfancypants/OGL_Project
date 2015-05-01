@@ -765,7 +765,7 @@ DEMO_APP::DEMO_APP(HINSTANCE hinst, WNDPROC proc)
 	b = device->CreateBuffer(&pyr_index_desc, &pyr_index_data, &PyrIndexBuffer);
 
 	viewFrustum.worldMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
-	viewFrustum.viewMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 5, -10, 1 };
+	viewFrustum.viewMatrix = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 5, -5, 1 };
 
 	float yScale = (1 / (tan(0.5f*1.57f)));
 	float xScale = (yScale * ((float)BACKBUFFER_WIDTH / (float)BACKBUFFER_HEIGHT));
@@ -898,19 +898,21 @@ bool DEMO_APP::Run()
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 	context->DrawIndexed(36, 0, 0);
 
-	context->RSSetViewports(1, &secondView);
-	context->VSSetConstantBuffers(0, 1, &viewBuffer);
-
 	context->Map(viewBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
-	((Camera*)mapped.pData)->worldMatrix = skyPos;
+	((Camera*)mapped.pData)->worldMatrix = newFrustum.viewMatrix;
 	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, newFrustum.viewMatrix);
 	((Camera*)mapped.pData)->projMatrix = newFrustum.projMatrix;
 	context->Unmap(viewBuffer, 0);
 
+	context->RSSetViewports(1, &secondView);
+	context->VSSetConstantBuffers(0, 1, &viewBuffer);
+
+	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1, 0);
+
 	context->DrawIndexed(36, 0, 0);
 	context->RSSetViewports(1, &viewport);
 
-	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH, 1, 0);
+	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1, 0);
 
 	context->Map(constantBuffer, 0, D3D11_MAP_WRITE_DISCARD, 0, &mapped);
 	((Camera*)mapped.pData)->worldMatrix = planePos;
@@ -968,6 +970,7 @@ bool DEMO_APP::Run()
 	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, newFrustum.viewMatrix);
 	((Camera*)mapped.pData)->projMatrix = newFrustum.projMatrix;
 	context->Unmap(viewBuffer, 0);
+	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1, 0);
 
 	context->DrawIndexed(6, 0, 0);
 	context->RSSetViewports(1, &viewport);
@@ -1033,6 +1036,7 @@ bool DEMO_APP::Run()
 	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, newFrustum.viewMatrix);
 	((Camera*)mapped.pData)->projMatrix = newFrustum.projMatrix;
 	context->Unmap(viewBuffer, 0);
+	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1, 0);
 
 	context->DrawIndexed(4632, 0, 0);
 	context->RSSetViewports(1, &viewport);
@@ -1095,6 +1099,8 @@ bool DEMO_APP::Run()
 	((Camera*)mapped.pData)->viewMatrix = XMMatrixInverse(NULL, newFrustum.viewMatrix);
 	((Camera*)mapped.pData)->projMatrix = newFrustum.projMatrix;
 	context->Unmap(viewBuffer, 0);
+	context->ClearDepthStencilView(depthView, D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, 1, 0);
+
 	context->DrawIndexedInstanced(1674, 16, 0, 0, 0);
 	context->RSSetViewports(1, &viewport);
 
@@ -1108,10 +1114,6 @@ bool DEMO_APP::Run()
 	context->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_POINTLIST);
 	context->IASetInputLayout(depthlayout);
 	context->Draw(1, 0);
-	context->RSSetViewports(1, &secondView);
-	context->VSSetConstantBuffers(0, 1, &viewBuffer);
-	context->Draw(1, 0);
-	context->RSSetViewports(1, &viewport);
 
 	//context->DrawInstanced(2, 8, 0, 0); 
 
